@@ -20,8 +20,8 @@ Windows 的 `~` 指用户目录，Python 命令可用 `py -3`。不要多嵌套�
 <details><summary>从源码安装</summary>
 
 ```bash
-git clone https://github.com/yinwu01/cc-zhibi.git
-cd cc-zhibi
+git clone https://github.com/yinwu01/claude-zhibi.git
+cd claude-zhibi
 python3 scripts/install_skill.py --host codex
 ```
 

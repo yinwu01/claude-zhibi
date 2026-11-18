@@ -1,4 +1,4 @@
-# 知彼（Zhibi）
+# 知彼（claude-zhibi）
 
 > **知己知彼，稳用 Claude。**
 >
@@ -35,8 +35,8 @@
 > 你也可以把这个仓库交给 Agent，告诉它「请在我的电脑安装知彼。已有旧版就保留备份再升级，安装好后告诉我怎么开始。」
 
 ```bash
-git clone https://github.com/yinwu01/cc-zhibi.git
-cd cc-zhibi
+git clone https://github.com/yinwu01/claude-zhibi.git
+cd claude-zhibi
 python3 scripts/install_skill.py --host codex
 ```
 

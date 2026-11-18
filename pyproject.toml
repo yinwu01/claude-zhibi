@@ -13,9 +13,9 @@ authors = [{name = "Zhibi contributors"}]
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/yinwu01/cc-zhibi"
-Repository = "https://github.com/yinwu01/cc-zhibi"
-Issues = "https://github.com/yinwu01/cc-zhibi/issues"
+Homepage = "https://github.com/yinwu01/claude-zhibi"
+Repository = "https://github.com/yinwu01/claude-zhibi"
+Issues = "https://github.com/yinwu01/claude-zhibi/issues"
 
 [project.optional-dependencies]
 mmdb = ["maxminddb>=2.6,<4"]

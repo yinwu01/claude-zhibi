@@ -1,4 +1,4 @@
-# Zhibi · 知彼
+# claude-zhibi · 知彼
 
 Zhibi is an Agent Skill that helps developers inspect and set up a dedicated environment for Claude. Use a separate browser profile for the web app and an isolated Linux workspace for Claude Code. The agent measures the actual network path for each environment.
 
@@ -11,7 +11,7 @@ Zhibi is an Agent Skill that helps developers inspect and set up a dedicated env
 
 IPv6 is disabled by default in managed PVM guests; the private proxy gateway permits IPv4 egress only. Host networking is unchanged.
 
-The project is named `cc-zhibi`; the CLI, Skill and Python package retain the name `zhibi`.
+The `claude-zhibi` project uses the name `zhibi` for its CLI, Skill, and Python package.
 
 ## Two runtime routes
 
@@ -40,8 +40,8 @@ A smaller environment helps align the chosen timezone, language and network path
 Use Python 3.9+, an SSH client and an Agent host such as Codex. Computer use is helpful for browser settings; supported APIs and manual steps can also be used.
 
 ```bash
-git clone https://github.com/yinwu01/cc-zhibi.git
-cd cc-zhibi
+git clone https://github.com/yinwu01/claude-zhibi.git
+cd claude-zhibi
 python3 scripts/install_skill.py --host codex
 ```
 

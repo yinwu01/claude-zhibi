@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- 项目与 GitHub 仓库更名为 `claude-zhibi`。
+
 ## 0.5.0a1 — 双路线开发预发布
 
 - 项目与仓库统一命名 cc-zhibi；保留 zhibi 命令、Skill、Python 包与状态目录，已有配置无需迁移。
