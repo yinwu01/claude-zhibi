@@ -19,7 +19,17 @@ zhibi project resume --project LOCAL_PROJECT --apply
 
 恢复脚本是可选项，只在应用支持时填写，例如应用自身的 continue/resume 命令。不存在通用会话恢复协议。HOME/应用数据由已有进程工作区持久化，绑定只记住连接和命令。终端断开后需要继续运行的任务使用 runtime-service 等进程托管，不能承诺历史会话恢复会维持后台运行。
 
-启动时本机 SOCKS 默认 10818，与已有浏览器工作区接法一致。端口冲突明确失败，不接管现有监听。远程进程实际出口仍需验收。
+浏览器已由后台服务维护时，绑定时传 `--no-browser-proxy`，以后启动和恢复只走 SSH 命令。未传时维持前台 SOCKS 行为，默认端口 10818。已有 VM 绑定自动走独立 SSH 命令模式。远程进程的实际出口仍需验收。
+
+## 编辑器接入
+
+```bash
+zhibi project editor --project LOCAL_PROJECT --out NEW_PRIVATE_DIRECTORY
+```
+
+适用于远程 Linux 和已有 SSH VM。导出目录放在代码仓库外，里面有独立 OpenSSH 配置、编辑器配置项和打开远端项目目录的终端脚本。连接前核对主机公钥。用支持自定义 SSH 配置的 Remote SSH 扩展连接导出主机，然后打开说明中的目录。VS Code 有对应的配置项；Cursor 以实际安装的扩展支持为准。终端脚本只打开登录 shell；在该 shell 里确认隔离入口后，再按用户选择启动应用。
+
+PVM 的项目目录已共享，可直接在宿主编辑器打开；运行仍从先前交付的 VM 入口进行。导出文件不修改编辑器或全局 SSH 配置，也不会复制密钥。
 
 ## 文件与图片
 

@@ -28,7 +28,19 @@ def argv(args):
     # Reuse the SSH identity rules; no shell is involved on the local machine.
     base = remote.ssh_argv(item, "")[:-3]
     base += ["-o", "ExitOnForwardFailure=yes", "-o", "ServerAliveInterval=30",
-             "-o", "ServerAliveCountMax=3", "-D", "127.0.0.1:" + str(args.local_port)]
+             "-o", "ServerAliveCountMax=3"]
+    endpoint = getattr(args, "gateway_socket", None)
+    ssh_only = getattr(args, "no_browser_proxy", False)
+    if ssh_only:
+        if not args.command_file or endpoint or getattr(args, "export_out", None):
+            raise InputError("仅运行远端命令时需提供启动脚本，不能同时转发或导出浏览器代理。")
+        base += ["-o", "ClearAllForwardings=yes"]
+    elif endpoint:
+        if not endpoint.startswith("/") or any(c in endpoint for c in "\0\n\r:"):
+            raise InputError("远端私人网关 socket 需要不含冒号的绝对路径。")
+        base += ["-L", "127.0.0.1:" + str(args.local_port) + ":" + endpoint]
+    else:
+        base += ["-D", "127.0.0.1:" + str(args.local_port)]
     destination = item["user"] + "@" + item["host"]
     if not args.command_file:
         return base + ["-N", "--", destination]
@@ -47,11 +59,13 @@ def run(args):
     if getattr(args, "export_out", None):
         from .connection_bundle import export
         return export(args, command)
+    ssh_only = getattr(args, "no_browser_proxy", False)
     plan = {"action": "connect", "host": args.host,
-            "browser_proxy": {"type": "socks5", "host": "127.0.0.1", "port": args.local_port},
+            "browser_proxy": None if ssh_only else {"type": "socks5", "host": "127.0.0.1", "port": args.local_port},
             "remote_process": bool(args.command_file), "interactive": args.interactive,
             "applied": False,
-            "notice": "保持此连接运行。浏览器需使用代理解析域名；SSH SOCKS 不转发 UDP，WebRTC 必须单独配置并实测。远端进程使用服务器现有路由，不自动覆盖其代理或 VPN。"}
+            "notice": "本连接只运行远端命令；浏览器由独立服务维护。" if ssh_only else
+            "保持此连接运行。浏览器需使用代理解析域名；SSH SOCKS 不转发 UDP，WebRTC 必须单独配置并实测。应用出口以实际运行环境为准。"}
     if not args.apply:
         return plan
     if args.interactive and not os.isatty(0):
@@ -92,6 +106,9 @@ def register(sub):
     p.add_argument("--identity")
     p.add_argument("--ssh-config", help="显式私人 SSH 配置，可配置 ProxyJump/ProxyCommand；默认不读用户配置")
     p.add_argument("--local-port", type=int, default=10818)
+    forwarding = p.add_mutually_exclusive_group()
+    forwarding.add_argument("--gateway-socket", help="转发服务器已有的私人 SOCKS 网关，共用应用出口")
+    forwarding.add_argument("--no-browser-proxy", action="store_true", help="只运行远端命令，不创建浏览器代理")
     p.add_argument("--command-file", help="本机私人脚本文件；在远端用 sh 执行，不打印内容")
     p.add_argument("--workdir", help="远端绝对工作目录")
     p.add_argument("--interactive", action="store_true", help="为交互式进程分配远端终端")

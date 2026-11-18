@@ -58,6 +58,7 @@ def bind(args):
         raise InputError("项目已有绑定；先检查 status，需要更换时显式 unbind。")
     backend = getattr(args, "backend", "remote")
     extra = {}
+    no_browser_proxy = backend == "ssh-vm" or getattr(args, "no_browser_proxy", False)
     if backend == "pvm":
         from . import pvm_backend
         vm_folder, vm_data = pvm_backend.load(args.vm_workspace)
@@ -82,8 +83,11 @@ def bind(args):
         probe_prefix = json.loads(private_read(Path(args.probe_prefix_file).expanduser()))
         if not isinstance(probe_prefix, list) or not probe_prefix or len(probe_prefix) > 32 or any(not isinstance(x, str) or not x or "\0" in x for x in probe_prefix):
             raise InputError("探针入口必须是非空 argv JSON 数组，不是 shell 字符串。")
+    if backend == "ssh-vm" and not probe_prefix:
+        raise InputError("已有 VM 须提供沙箱探针入口；仅测 guest 宿主网络不能证明应用出口。")
     data = {"version": 1, "backend": backend, "project": str(project), **extra,
             "target": item, "workdir": workdir, "local_port": args.local_port,
+            "no_browser_proxy": no_browser_proxy,
             "interactive": args.interactive,
             "probe_prefix": probe_prefix,
             "scripts": {name: hashlib.sha256(text.encode()).hexdigest() for name, text in scripts.items()}}
@@ -114,7 +118,7 @@ def load(args):
     if os.name == "posix" and (folder.stat().st_uid != os.getuid() or folder.stat().st_mode & 0o077):
         raise InputError("项目绑定目录必须由当前用户拥有，权限为 700。")
     data = json.loads(private_read(folder / "binding.private.json"))
-    if data.get("version") != 1 or data.get("project") != str(project) or data.get("backend") not in ("remote", "pvm"):
+    if data.get("version") != 1 or data.get("project") != str(project) or data.get("backend") not in ("remote", "pvm", "ssh-vm"):
         raise InputError("项目绑定版本或路径不匹配。")
     for name, digest in data["scripts"].items():
         if name not in ("start", "resume"):
@@ -133,6 +137,9 @@ def run(args):
     if args.action == "audit":
         from .project_audit import audit
         return audit(args, data)
+    if args.action == "editor":
+        from .editor import export
+        return export(args.out, data)
     if args.action in ("upload", "download"):
         if data["backend"] == "pvm":
             raise InputError("本地 VM 共享当前项目，无需传输。请将文件保存到项目中，VM 内路径为 /workspace。")
@@ -141,7 +148,8 @@ def run(args):
     info = {"backend": data["backend"], "project": data["project"],
             "host": data["target"]["host"] if data["target"] else "local-vm", "workdir": data["workdir"],
             "resume_configured": "resume" in data["scripts"],
-            "live_checked": False, "browser_proxy_port": data["local_port"] if data["target"] else None}
+            "live_checked": False, "browser_proxy_port": data["local_port"]
+            if data["target"] and not data.get("no_browser_proxy") else None}
     if args.action == "status":
         if args.network and not args.live:
             raise InputError("--network 需要同时指定 --live。")
@@ -173,6 +181,7 @@ def run(args):
         return pvm_backend.run_application(data["vm_workspace"], private_read(folder / (name + ".sh")),
                                            data["interactive"], args.apply)
     options = SimpleNamespace(**data["target"], local_port=data["local_port"],
+                              no_browser_proxy=data.get("no_browser_proxy", False),
                               command_file=str(folder / (name + ".sh")),
                               workdir=data["workdir"], interactive=data["interactive"],
                               apply=args.apply, export_out=None)
@@ -189,12 +198,12 @@ def run(args):
 def register(sub):
     p = sub.add_parser("project", help="保存私人项目绑定，启动/恢复远端应用并检查状态")
     actions = p.add_subparsers(dest="action", required=True)
-    for action in ("bind", "start", "resume", "status", "unbind", "upload", "download", "audit"):
+    for action in ("bind", "start", "resume", "status", "unbind", "upload", "download", "audit", "editor"):
         child = actions.add_parser(action)
         child.add_argument("--project", default=".")
         child.add_argument("--state-dir", help="私人状态目录；默认 ~/.zhibi/projects")
         if action == "bind":
-            child.add_argument("--backend", choices=("remote", "pvm"), default="remote")
+            child.add_argument("--backend", choices=("remote", "pvm", "ssh-vm"), default="remote")
             child.add_argument("--vm-workspace")
             child.add_argument("--host")
             child.add_argument("--user", default="root")
@@ -206,7 +215,10 @@ def register(sub):
             child.add_argument("--resume-file")
             child.add_argument("--probe-prefix-file", help="私人 JSON argv 数组，指定应用探针运行入口，如 bwrap run.py --")
             child.add_argument("--local-port", type=int, default=10818)
+            child.add_argument("--no-browser-proxy", action="store_true", help="浏览器使用独立后台连接")
             child.add_argument("--interactive", action="store_true")
+        elif action == "editor":
+            child.add_argument("--out", required=True, help="新的私人编辑器接入目录")
         elif action == "audit":
             child.add_argument("--network", action="store_true")
             child.add_argument("--expected-ip")

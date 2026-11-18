@@ -63,6 +63,35 @@ class ProjectTests(unittest.TestCase):
                 patch("zhibi.connect.foreground", side_effect=AssertionError("process")):
             self.assertFalse(project.run(self.args)["applied"])
 
+    def test_existing_guest_uses_isolated_probe_and_no_browser_listener(self):
+        self.args.backend = "ssh-vm"
+        with self.assertRaises(InputError):
+            self.bind()
+        prefix = self.root / "probe.private.json"
+        project.save(prefix, json.dumps(["python3", "/home/worker/private/run.py", "--"]))
+        self.args.probe_prefix_file = str(prefix)
+        self.bind()
+        self.args.action, self.args.apply = "start", True
+        with patch("zhibi.remote.execute", return_value={"state": "ok"}), \
+                patch("zhibi.connect.foreground", return_value=0) as process:
+            result = project.run(self.args)
+        self.assertIsNone(result["browser_proxy"])
+        self.assertIn("ClearAllForwardings=yes", process.call_args.args[0])
+        self.assertNotIn("-D", process.call_args.args[0])
+
+    def test_editor_export_is_private_and_never_launches_ssh(self):
+        self.bind()
+        self.args.action = "editor"
+        self.args.out = str(self.root / "editor")
+        with patch("subprocess.Popen", side_effect=AssertionError("must remain offline")):
+            result = project.run(self.args)
+        path = Path(result["ssh_config"])
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertFalse(result["connected"])
+        self.assertIn("ForwardAgent no", path.read_text())
+        self.assertIn("StrictHostKeyChecking yes", path.read_text())
+        self.assertNotIn("private argument", Path(result["terminal_launcher"]).read_text())
+
     def test_unavailable_directory_never_launches(self):
         self.bind()
         self.args.action, self.args.apply = "start", True

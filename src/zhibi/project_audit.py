@@ -39,7 +39,7 @@ def measure(data):
     prefix = data.get("probe_prefix", [])
     if prefix:
         expression = " ".join(shlex.quote(item) for item in prefix) + " " + expression
-    if data["backend"] == "remote":
+    if data["backend"] in ("remote", "ssh-vm"):
         outcome = remote.execute(remote.target(**data["target"]), expression, timeout=45)
         text = outcome["value"] if outcome["state"] == "ok" else ""
     else:

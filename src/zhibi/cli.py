@@ -63,7 +63,7 @@ def save_run(report, snapshot, destination=None):
     emit({"directory": str(directory), "report": str(directory / "report.html"), "summary": summary})
 
 
-VISIBLE = {"vm", "project", "session", "scan", "check", "connect", "connection-check", "browser-workspace", "process-workspace", "process-entry", "proxy-gateway", "runtime-service", "build", "browse", "accept", "deliver", "doctor"}
+VISIBLE = {"process-activate", "connection-service", "vm", "project", "session", "scan", "check", "connect", "connection-check", "browser-workspace", "process-workspace", "process-entry", "proxy-gateway", "runtime-service", "build", "browse", "accept", "deliver", "doctor"}
 
 
 def _minimal_help(parser):
@@ -187,17 +187,25 @@ def main(argv=None):
     adspower.register(sub)
     from . import remote
     remote.register(sub)
+    from . import shell_entry, connection_service
+    shell_entry.register(sub)
+    connection_service.register(sub)
     p = sub.add_parser("runtime-service", help="导出用户级 systemd 网关与可选后台应用服务")
-    p.add_argument("--workspace", required=True)
+    runtime_mode = p.add_mutually_exclusive_group(required=True)
+    runtime_mode.add_argument("--workspace", help="应用工作区，复用其中的私人网关 socket")
+    runtime_mode.add_argument("--socket", help="独立网关 socket，用于网页版或供另一台 Linux 机器接入")
+    p.add_argument("--upstream-file", help="VPS 上权限 600 的可选 SOCKS5 上游配置")
     p.add_argument("--name", required=True, help="以 zhibi- 开头的新服务名")
     p.add_argument("--out", required=True)
     p.add_argument("program", nargs=argparse.REMAINDER, help="-- 后填写可选后台程序与参数")
-    p = sub.add_parser("proxy-gateway", help="启动私人 Unix SOCKS5 端点，使用服务器现有出口")
+    p = sub.add_parser("proxy-gateway", help="启动私人 Unix SOCKS5 端点，使用现有路由或显式上游")
     p.add_argument("--socket", required=True)
+    p.add_argument("--upstream-file", help="权限 600 的可选 SOCKS5 上游配置")
     p = sub.add_parser("process-entry", help="为现有进程工作区创建专用命令入口")
     p.add_argument("--workspace", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--program", required=True, help="沙箱内绝对程序路径")
+    p.add_argument("--preserve-cwd", action="store_true", help="保留已配置项目内的当前目录，项目外拒绝启动")
     p = sub.add_parser("process-workspace", help="创建 bwrap 专用进程环境与独立启动器")
     p.add_argument("--out", required=True)
     p.add_argument("--workdir", required=True)
@@ -238,16 +246,21 @@ def main(argv=None):
             emit(delivery.install(args.archive, args.sha256, args.dest, args.replace))
         elif args.command == "skill-rollback":
             emit(delivery.rollback(args.dest, args.previous))
+        elif args.command == "process-activate":
+            emit(shell_entry.run(args))
+        elif args.command == "connection-service":
+            emit(connection_service.export(args))
         elif args.command == "runtime-service":
             from .runtime_service import export
             program = args.program[1:] if args.program[:1] == ["--"] else args.program
-            emit(export(args.out, args.workspace, args.name, program))
+            emit(export(args.out, args.workspace, args.name, program,
+                        socket_path=args.socket, upstream_file=args.upstream_file))
         elif args.command == "proxy-gateway":
             from .proxy_gateway import serve
-            serve(args.socket)
+            serve(args.socket, args.upstream_file)
         elif args.command == "process-entry":
             from .sandbox import install_entry
-            emit(install_entry(args.workspace, args.name, args.program))
+            emit(install_entry(args.workspace, args.name, args.program, args.preserve_cwd))
         elif args.command == "process-workspace":
             from .sandbox import prepare
             emit(prepare(args.out, args.workdir, args.timezone, args.locale, args.network, args.app_dir,

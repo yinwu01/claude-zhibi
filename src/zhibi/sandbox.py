@@ -8,6 +8,7 @@ import subprocess
 import sys
 import re
 import shlex
+import socket
 import hashlib
 import stat
 import ipaddress
@@ -34,6 +35,21 @@ def proxy_files(binary, digest, endpoint):
             or parent.stat().st_uid != os.getuid() or parent.stat().st_mode & 0o077):
         raise ValueError("代理必须是当前用户所有、位于私人目录内的 Unix SOCKS5 socket。")
     return str(executable), str(sock)
+
+
+def check_proxy(endpoint):
+    # A socket inode can remain after a crash. Check the real listener before
+    # starting the application. A later failure stays inside the network namespace.
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(2)
+            client.connect(endpoint)
+            client.sendall(b"\x05\x01\x00")
+            with client.makefile('rb') as response:
+                if response.read(2) != b"\x05\x00":
+                    raise ValueError("私人 SOCKS 网关未就绪。")
+    except OSError as exc:
+        raise ValueError("私人 SOCKS 网关未就绪。") from exc
 
 
 def prepare(out, workdir, timezone="Etc/UTC", locale="C.UTF-8", network="isolated", app_dir=None,
@@ -83,7 +99,7 @@ def prepare(out, workdir, timezone="Etc/UTC", locale="C.UTF-8", network="isolate
             "private_home": True, "environment_allowlist": ["HOME", "PATH", "LANG", "LC_ALL", "TZ", "TERM"]}
 
 
-def command(directory, program):
+def command(directory, program, cwd=None):
     if not sys.platform.startswith("linux"):
         raise ValueError("进程沙箱需在 Linux 服务器运行。")
     bwrap = shutil.which("bwrap")
@@ -110,8 +126,17 @@ def command(directory, program):
     for name in ("/etc/ld.so.cache", "/etc/ssl/certs", "/etc/pki", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"):
         if os.path.exists(name):
             args += ["--ro-bind", os.path.realpath(name), name]
+    work = checked_directory(config["workdir"])
+    guest_cwd = "/workspace"
+    if cwd is not None:
+        current = checked_directory(cwd)
+        try:
+            relative = current.relative_to(work)
+        except ValueError:
+            raise ValueError("当前目录不属于已配置项目；未启动应用。") from None
+        guest_cwd = "/workspace/" + relative.as_posix()
     args += ["--bind", str(checked_directory(root / "home")), "/home/app",
-             "--bind", str(checked_directory(config["workdir"])), "/workspace", "--chdir", "/workspace"]
+             "--bind", str(checked_directory(config["workdir"])), "/workspace", "--chdir", guest_cwd]
     if config.get("app_dir"):
         args += ["--ro-bind", str(checked_directory(config["app_dir"])), "/opt/app"]
     environment = {"HOME": "/home/app", "PATH": "/opt/app/bin:/opt/app:/usr/local/bin:/usr/bin:/bin",
@@ -121,6 +146,7 @@ def command(directory, program):
     if config["network"] == "proxy":
         proxy = config["proxy"]
         binary, endpoint = proxy_files(proxy["binary"], proxy["sha256"], proxy["socket"])
+        check_proxy(endpoint)
         ip = shutil.which("ip")
         setpriv = shutil.which("setpriv")
         if not ip or not setpriv:
@@ -145,7 +171,7 @@ def command(directory, program):
     return args + ["--", *program]
 
 
-def install_entry(directory, name, program):
+def install_entry(directory, name, program, preserve_cwd=False):
     """Create an independent PATH entry; never replace an application's own files."""
     root = checked_directory(directory)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", name):
@@ -163,8 +189,9 @@ def install_entry(directory, name, program):
     checked_directory(bindir)
     entry = bindir / name
     # Literal argv, no shell evaluation of the application or forwarded arguments.
-    source = ("#!/bin/sh\nexec " + shlex.join([sys.executable, str(runner), "--", program])
-              + ' "$@"\n')
+    prefix = shlex.join([sys.executable, str(runner)])
+    source = ("#!/bin/sh\nexec " + prefix + (' --cwd "$PWD"' if preserve_cwd else '')
+              + " -- " + shlex.quote(program) + ' "$@"\n')
     fd = os.open(str(entry), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700)
     with os.fdopen(fd, "w") as handle:
         handle.write(source)
@@ -178,11 +205,12 @@ def install_entry(directory, name, program):
 
 def main():
     parser = argparse.ArgumentParser(description="运行专用 Linux 进程环境")
+    parser.add_argument("--cwd")
     parser.add_argument("program", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     program = args.program[1:] if args.program[:1] == ["--"] else args.program
     try:
-        argv = command(Path(__file__).resolve().parent, program)
+        argv = command(Path(__file__).resolve().parent, program, args.cwd)
         os.execv(argv[0], argv)
     except (ValueError, OSError, KeyError, TypeError):
         print("沙箱启动失败；未回退到直接执行。请检查依赖、配置和目录权限。", file=sys.stderr)

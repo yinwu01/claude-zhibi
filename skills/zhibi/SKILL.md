@@ -5,7 +5,7 @@ description: Inspect the user's browser and network, prepare a remote Linux work
 
 # 知彼
 
-用用户能理解的话解释现状、需要的操作和验证结果。主线是：扫描与判断 → 确认运行位置与出口 → 准备 Linux 环境和应用 → 所选浏览器 → 总体验收。优先远程 Linux 服务器；没有远程运行服务器时可提供本地 PVM VM。仅检查也是完整任务，不要求用户先提供 VPS 或命令。
+用用户能理解的话解释现状、需要的操作和验证结果。先扫描，再按需求选择仅检查、仅浏览器，或浏览器加应用。需要运行应用时优先远程 Linux 服务器；没有远程工作机时可提供本地 PVM VM。
 
 脚本入口为本 Skill 下的 `scripts/zhibi.py`。由 Agent 运行命令；安装依赖和界面操作根据宿主、系统及用户现状安排。已有授权继续有效，缺什么问什么。
 
@@ -19,33 +19,35 @@ description: Inspect the user's browser and network, prepare a remote Linux work
 
 ## 2. 询问配置需求
 
-用户仅要求检查时先交付结果。需要配置时分开确认运行环境与网络出口：有 Linux 服务器则优先远程路线；没有则按 [local-vm](references/local-vm.md) 检查本机资源并准备 PVM。VM 不自动提供地区出口。补齐用户启动命令和浏览器选择，不默认品牌；仅进程、普通浏览器或指纹浏览器均可。
+用户仅要求检查时先交付结果。需要配置时分开确认运行环境与网络出口：优先远程 Linux，或按 [local-vm](references/local-vm.md) 接入已有 SSH 虚拟机、通过 PVM 创建本机虚拟机。虚拟机的实际出口需要单独配置与核验。补齐用户启动命令和浏览器选择，不默认品牌。
 
-按 [intake](references/intake.md) 收集信息，检查现有软件、服务和端口，给出具体修改计划。用户已授权的步骤直接继续；新增范围才补问。不购买资源、不代替用户登录账号。
+按 [intake](references/intake.md) 收集信息，检查现有软件、服务和端口，给出具体修改计划。用户已授权的步骤直接继续；新增范围才补问。用户要求暂缓运行真实应用或访问目标站时，用合成命令和测试站验收基础设施；跳过真实应用的版本检查、启动、登录和目标站访问。不要代购资源或代替用户登录。
 
 ## 3. VPS 服务与进程
 
 本节用于远程路线。本地路线按 local-vm 参考创建共享项目与桌面，并使用相同的 project 启动/恢复入口；不要把整个远程部署流程重复套在本地 VM 上。
 
+仅浏览器的用户无需应用工作区，按 [runtime](references/runtime.md) 交付连接服务，再进行浏览器配置。
+
 阅读 [runtime](references/runtime.md) 和 [remote](references/remote.md)。根据命令的真实运行方式选择交互终端、一次性执行或后台服务。准备依赖时根据实际 Linux 发行版、安装渠道和权限安排，安装后验证可执行文件和版本。不要改变用户命令的用途。
 
 `connect` 可以同时提供本机 SOCKS5 与远端进程；`build` 用于非交互后台服务，默认只出计划。后台常驻不等于应用可用，必须检查日志和用户所需的应用操作。先保存原值和已有服务配置，再执行授权的变更。
 
-需要专用进程环境时，按 runtime 参考使用 `process-workspace` 与 `process-entry`。需要受控代理联网时选择 proxy 模式，核验固定版本 graftcp 和解析器可达性；长期运行用 `runtime-service` 交付用户级网关服务及恢复入口。不要把默认完全隔离模式交付成可联网环境，也不要把 host 模式描述成代理专用网络。
+需要专用进程环境时，按 runtime 参考使用 `process-workspace` 与 `process-entry`。需要受控代理联网时选择 proxy 模式，核验固定版本 graftcp 和解析器可达性；用 `runtime-service` 交付用户级网关服务。用户希望直接运行应用名时，用 `process-activate` 配置并核对新登录终端。安排从项目目录启动；验收前先确认实际解析到专用入口。
 
-需要按项目保存连接、再次启动或恢复应用会话时，阅读 [projects](references/projects.md)。`project bind/start/resume/status` 复用现有远程环境；`project upload/download` 处理选定的单个文件或图片。绑定不等于完成部署，应用会话恢复与后台常驻分别验证。
+需要按项目保存连接、再次启动或恢复应用会话时，阅读 [projects](references/projects.md)。`project bind --no-browser-proxy` 让命令启动独立于浏览器服务。`project editor` 导出远程编辑器连接，`project upload/download` 处理选定的单个文件或图片。应用会话恢复与后台常驻分别验证。
 
 ## 4. 浏览器
 
-阅读 [browser](references/browser.md)。用户可以自行配置或委托 Agent。API、computer use 或手动均可；以实际浏览器版本和官方说明选择方式。本地 VM 路线可在同一 VM 桌面内运行浏览器；确认 Linux 浏览器已安装且实际出口正确。配置目标固定，点击步骤灵活。
+阅读 [browser](references/browser.md)。由 Agent 根据现有能力选择 API、computer use 或两者结合，在用户选择的指纹浏览器中配置并保存专用环境。已有可用且足以完成任务的 API 时优先使用；没有 API 或功能不足时通过 computer use 操作实际界面。不固定品牌或点击步骤，不将 API Key 作为前提。目标是用户以后直接打开该浏览器环境即可使用所需服务，无需再次运行知彼或手动启动隧道。本地 VM 路线也可在 VM 桌面内配置。保存后在实际浏览器验证出口和目标服务访问；API 和 computer use 都无法完成的必要步骤才交给用户。
 
 ## 5. 总体验收与交付
 
-两条路线共同按 [audit](references/audit.md) 执行项目上下文测量、实际浏览器对比、协议检查和受控断网恢复。PVM audit 的 warn/skipped 与 0 退出码不能组合成“通过”。保存缺测项；单一 HTTPS 阻断演练不证明全协议无泄漏。
+按 [audit](references/audit.md) 执行适用的运行上下文测量、实际浏览器对比、协议检查和受控断网恢复。仅浏览器时核验浏览器与预期出口；同时运行应用时分别测量两端实际线路。PVM 的 warn/skipped 与缺测项保留原状态。
 
 远程路线在隧道实际运行时，从指定浏览器重新采集，测出口和所选 DNS/WebRTC 项。用 `accept --host HOST --egress --browser FILE` 比对；只有用户确实选择了时区/语言目标才传对应参数。`deliver` 同样接收 `--browser`，将两端结果保存到本机。本地 VM 路线使用 project audit 与 vm audit，不把 VM 名称作为远程 VPS 地址传给 accept；报告和 VM 工作区分别保存。
 
-按 [deliver](references/deliver.md) 保存启动入口与报告。检查进程的实际操作是否成功、浏览器是否可以正常访问用户需要的服务，由用户在浏览器完成账号登录。还要验证停止连接及恢复原配置。缺失观测不能算通过；未解决的问题写清影响，不能把部分结果说成全部可用。
+按 [deliver](references/deliver.md) 保存启动入口与报告。按用户授权检查进程的实际操作和浏览器访问；账号登录由用户完成。验证停止连接及恢复原配置。使用合成命令或测试页时记录验收范围，真实应用和目标站保留为未测。
 
 `build --apply` 保存私人原值与部署回执；交付时传 `--build-receipt`，生成作用于该 VPS 的服务与时区恢复命令。安装依赖、语言生成和浏览器修改仍需记录各自恢复方式，不能承诺这些都由脚本自动恢复。check/browse/accept 使用 `--out` 保存阶段结果，build --apply 保存原值和回执；其余阶段过程由 Agent 在私人会话目录保存，恢复任务时先读文件并核对实际状态；不能假定 CLI 已有自动断点恢复。
 

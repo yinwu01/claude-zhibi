@@ -31,19 +31,29 @@ def argument(value):
     return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('%', '%%').replace('$', '$$') + '"'
 
 
-def export(out, profile, name, program=None):
+def export(out, profile, name, program=None, *, socket_path=None, upstream_file=None):
     if not sys.platform.startswith('linux'):
         raise ValueError('Create the runtime service on its Linux server.')
     if not re.fullmatch(r'zhibi-[a-zA-Z0-9][a-zA-Z0-9_.-]{0,55}', name):
         raise ValueError('Choose a service name starting with zhibi-, using letters, digits, dots or hyphens.')
-    root = private_directory(profile)
-    data = json.loads((root / 'profile.json').read_text())
-    if data.get('network') != 'proxy' or not data.get('proxy'):
-        raise ValueError('The workspace must use proxy networking.')
-    socket_path = Path(data['proxy']['socket'])
+    if bool(profile) == bool(socket_path):
+        raise ValueError('Choose exactly one workspace or standalone gateway socket.')
+    root = private_directory(profile) if profile else None
+    if root:
+        data = json.loads((root / 'profile.json').read_text())
+        if data.get('network') != 'proxy' or not data.get('proxy'):
+            raise ValueError('The workspace must use proxy networking.')
+        socket_path = data['proxy']['socket']
+        if not (root / 'run.py').is_file():
+            raise ValueError('Workspace runner is missing.')
+    elif program:
+        raise ValueError('A background application needs an application workspace.')
+    socket_path = Path(socket_path).expanduser().absolute()
     private_directory(socket_path.parent)
-    if not (root / 'run.py').is_file():
-        raise ValueError('Workspace runner is missing.')
+    if upstream_file:
+        from .proxy_gateway import load_upstream
+        upstream_file = str(Path(upstream_file).expanduser().absolute())
+        load_upstream(upstream_file)
     directory = Path(out).expanduser().absolute()
     if any(p.is_symlink() for p in directory.parents):
         raise ValueError('Output path cannot contain symlink ancestors.')
@@ -59,12 +69,14 @@ def export(out, profile, name, program=None):
               'UMask=0077\n[Install]\nWantedBy=default.target\n')
     (directory / (name + '.service')).write_text(unit)
     (directory / (name + '.service')).chmod(0o600)
-    config = {'version': 1, 'name': name, 'profile': str(root), 'socket': str(socket_path),
+    config = {'version': 1, 'name': name, 'profile': str(root) if root else None, 'socket': str(socket_path),
+              'upstream_file': upstream_file,
               'python': sys.executable, 'program': list(program or []),
               'unit_sha256': hashlib.sha256(unit.encode()).hexdigest()}
     write_private(directory / 'service.json', config)
     return {'directory': str(directory), 'manager': str(directory / 'manage.py'),
-            'name': name, 'installed': False, 'scope': 'systemd-user',
+            'name': name, 'installed': False, 'scope': 'systemd-user', 'socket': str(socket_path),
+            'egress': 'upstream-socks5' if upstream_file else 'server-existing-route',
             'commands': {action: [sys.executable, str(directory / 'manage.py'), action]
                          for action in ('install', 'status', 'rollback')}}
 
@@ -222,8 +234,10 @@ def supervise(root, config):
         signal.signal(sig, stop)
     try:
         remove_stale_gateway(root, config)
-        gateway = subprocess.Popen([config['python'], str(root / 'gateway.py'), '--socket', config['socket']],
-                                   stdout=subprocess.PIPE, text=True)
+        gateway_command = [config['python'], str(root / 'gateway.py'), '--socket', config['socket']]
+        if config.get('upstream_file'):
+            gateway_command += ['--upstream-file', config['upstream_file']]
+        gateway = subprocess.Popen(gateway_command, stdout=subprocess.PIPE, text=True)
         children.append(gateway)
         ready, _, _ = select.select([gateway.stdout], [], [], 10)
         announcement = gateway.stdout.readline() if ready else ''

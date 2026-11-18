@@ -1,8 +1,8 @@
-# cc-zhibi · 知彼 · Let your agent inspect and align your environment
+# Zhibi · 知彼
 
-cc-zhibi is an Agent Skill with local tools. It inspects the browser and network you actually use, prepares a dedicated Linux application environment when requested, and records what was verified.
+Zhibi is an Agent Skill that helps developers inspect and set up a dedicated environment for Claude. Use a separate browser profile for the web app and an isolated Linux workspace for Claude Code. The agent measures the actual network path for each environment.
 
-**Scan → Choose runtime and exit → Prepare the application → Configure the browser → Verify and hand over.**
+**Inspect → Choose a route → Configure → Verify → Hand over.**
 
 [简体中文](README.md) · [Get started](#get-started) · [Implementation status](docs/implementation/two-route-plan.md)
 
@@ -14,12 +14,14 @@ The project is named `cc-zhibi`; the CLI, Skill and Python package retain the na
 
 | Route | Application runtime | Files and browser |
 | --- | --- | --- |
-| Preferred: your Linux server | A dedicated remote workspace, optionally isolated with bubblewrap and supervised by systemd | Remote editing or explicit file transfer; a local browser can use the VPS through SSH SOCKS |
+| Web only | Your own VPS provides the browser's network route over SSH | A separate profile in your browser, with a connection service on macOS or Linux |
+| Web and Claude Code: remote Linux | A dedicated Linux workspace with an isolated application entry point and a private gateway | The browser and CLI can share the gateway. The VPS can also serve as the Linux work machine |
 | Alternative: a local Linux VM | PVM creates a Linux VM on your computer | The selected project is shared at `/workspace`; a browser can run in the same VM desktop |
+| Existing Linux VM | Attach a VM that already accepts SSH connections | The application can use the same private VPS gateway as the local browser. Your VM manager handles provisioning and power |
 
-Runtime location and network exit are separate choices. A local VM does not automatically provide a dedicated regional exit. Configure a separately registered VPS exit, or explicitly choose `direct` to use the host's network. WARP is an upstream option, not an equivalent promise of a dedicated regional VPS.
+Runtime location and network exit are separate choices. PVM supports a registered VPS exit and an explicit `direct` mode. The private VPS gateway can also use a user-supplied SOCKS5 upstream. The selected upstream must be available for requests to proceed. [Runtime setup](skills/zhibi/references/runtime.md)
 
-The remote route requires a Linux server you control. Residential or datacenter connectivity can be used; a mass-shared proxy subscription does not replace a server or a dedicated, traceable exit. Checks alone do not require a VPS.
+Use a server you control for the VPS route. You can check an existing environment without a VPS. Use the official account flows for sign-up, billing and verification, and check the service's eligibility requirements before using it. [Anthropic Supported Regions Policy](https://www.anthropic.com/legal/supported-regions)
 
 ## What you receive
 
@@ -41,15 +43,21 @@ cd cc-zhibi
 python3 scripts/install_skill.py --host codex
 ```
 
-Ask the agent:
+Ask the agent to set up one of these routes:
 
-> Use Zhibi to inspect my actual browser and network. Prefer my Linux server when preparing an application environment. If I do not have one, evaluate a local VM. Adapt installation to my setup, then save the launch instructions and verification results.
+> **Web only.** Use Zhibi to inspect my browser and VPS. Set up a dedicated browser profile and test its connection with a test page. Tell me which profile to open and how to restore the setup.
+
+> **Web and CLI.** Use Zhibi to inspect my browser and VPS. Set up an isolated Linux workspace and connect the browser to the same private gateway. Verify the setup with a synthetic command before running any real application. Tell me how to confirm that the shell resolves the isolated entry point.
 
 Local VMs additionally need separately installed PVM v1.1.6, its QEMU runtime, and sufficient memory and disk. The current adapter accepts macOS arm64 and Linux amd64; Windows support in upstream PVM is not yet integrated here. First-time image construction takes additional time.
 
 ## Daily use
 
-Once the agent has bound your project:
+Open the dedicated browser profile for web use. For remote CLI use, connect to Linux and run the app from the configured project directory after the agent has verified the shell entry. The browser connection attempts to reconnect automatically. Recheck the measured exit after changing lines or if access does not recover.
+
+For a bound SSH project, `zhibi project editor --out PRIVATE_DIRECTORY` exports a separate SSH profile, editor settings and a terminal launcher. Editor extensions and the real deployment need their own verification. [Editor setup](skills/zhibi/references/projects.md)
+
+Project bindings remain available for managing and restoring a launch, including on the local VM route:
 
 ```bash
 zhibi project status
@@ -81,7 +89,7 @@ Application login and history persist in the runtime environment. Session restor
 
 `project audit` measures the selected execution environment, compares an imported browser observation and can run a controlled disconnect/reconnect drill. Remote sandbox probes need an explicit runner prefix; otherwise the report identifies the server host as the measurement context. PVM protocol results are included for the local route.
 
-Missing observations remain unmeasured. A successful DNS lookup does not prove its route, and losing SSH access does not prove that application traffic was blocked. A single HTTPS outage test does not cover every protocol. See the [current implementation and acceptance record](docs/implementation/two-route-plan.md) for the distinction between implementation, development tests and deployment verification.
+Missing observations remain unmeasured. The actual browser, application session and protocol behavior each need their own evidence. See the [current implementation and acceptance record](docs/implementation/two-route-plan.md) and [persistent entry status](docs/implementation/native-delivery.md).
 
 Reports and private configuration are processed locally. Network probes and optional IP-information lookups still contact their stated services, which can see the request IP or queried IP. Zhibi does not collect browser cookies or account credentials. [Data flow](docs/reference/privacy.md).
 

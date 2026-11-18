@@ -14,6 +14,31 @@
 
 需要交付可自行启动的入口时，用 `connect ... --export-out 新目录`，与 `--apply` 分开。文件夹含独立 `start.py`、私人连接配置、浏览器参数和使用说明；不复制私钥。生成后运行并实测，不能把导出成功当作已连通。
 
+## 浏览器后台连接
+
+在浏览器所在的 macOS 或 Linux 上导出连接服务。仅浏览器时用 `--vps-egress`，由 SSH 动态转发使用 VPS 现有出口。浏览器加远程应用时，改用 `--gateway-socket SOCKET`，通过 SSH 将本机 SOCKS 端口接到应用使用的同一个私人网关。SSH 连接需要用户现有的免交互认证和明确的目标身份。需要跳板或专用 known_hosts 时指定权限 600 的 `--ssh-config FILE`。
+
+```bash
+zhibi connection-service --host HOST --user USER --local-port 10818 \
+  --name zhibi-web --out NEW_DIRECTORY --vps-egress
+python3 NEW_DIRECTORY/manage.py install
+python3 NEW_DIRECTORY/manage.py status
+```
+
+服务随本机用户登录运行。需要撤销时使用导出目录下的 `python3 manage.py rollback`。服务的就绪状态表示 SOCKS 握手成功。用 `connection-check` 和实际浏览器读数核对出口，关闭重开，并用授权测试页验证连接中断时的行为。线路切换或重连后需要确认新出口时再复测，不从服务状态推断出口 IP。系统没有可用的用户服务管理器时，可用前台连接临时测试，交付时注明它的生命周期。
+
+### 可选 SOCKS5 上游
+
+用户已有专用上游时，可让 VPS 私人网关转发到它。将配置写入 VPS 上当前用户拥有、权限 600 的新 JSON 文件：
+
+```json
+{"type":"socks5","host":"proxy.example","port":1080}
+```
+
+需认证时，在同一文件内加 `username`、`password`，用户名密码都不放在命令参数或报告里。SOCKS5 用户名密码协议本身不加密，使用用户信任的网络或已有加密连接。局部和上游代理均为 TCP。域名请求由上游解析，上游可能选择自己的 IPv6 路径，验收应测最终出口。
+
+在原有 `proxy-gateway` 或 `runtime-service` 命令加 `--upstream-file FILE`。上游不可达、拒绝认证或拒绝目标时请求失败，不改用 VPS 直连。仅浏览器或多机器共用网关时，可在 VPS 用 `runtime-service --socket SOCKET --upstream-file FILE --name zhibi-edge --out SERVICE_DIR` 安装独立网关，再让浏览器连接服务使用 `--gateway-socket SOCKET`。使用上游时不选 `--vps-egress`，它只适合直接用 VPS 现有线路。
+
 ## 独立应用工作区
 
 在目标 Linux 上用 `process-workspace --out PROFILE --workdir WORK --app-dir APP_DIR --timezone ZONE --locale LOCALE` 创建工作区。WORK 是专用可写目录，APP_DIR 是应用安装目录（只读挂载为 /opt/app）；不要把宿主 HOME 当工作目录，否则会重新暴露其中的资料。应用在独立 HOME 初始化，账号登录由用户完成。先确认 Linux 用户命名空间、bwrap、目标 locale 与应用运行库可用。
@@ -22,7 +47,9 @@
 
 `proxy-gateway --socket SOCKET` 可创建私人 Unix SOCKS5 端点，socket 的父目录需当前用户所有、权限 700。先启动临时前台网关，再创建与验证 proxy 工作区；工作区创建会检查 socket 与 graftcp。这个网关使用 VPS 现有 TCP 出口，不自动接管已有 VPN、代理或系统路由。
 
-`process-entry --workspace PROFILE --name APP --program /opt/app/PATH` 创建独立 PATH 入口，输出 activate/check/remove 操作。核对 `type -a APP` 与 `command -v APP`，处理该 shell 中已有别名、函数或旧入口。根据用户授权将专用 bin 放在其 PATH 前面；不直接覆盖应用安装文件。应用升级在宿主侧完成，升级后重新检查路径和真实运行；绝对路径与其他服务不会因为 PATH 设置自动被包裹。
+`process-entry --workspace PROFILE --name APP --program /opt/app/PATH --preserve-cwd` 创建独立 PATH 入口；此选项保留项目内的当前目录，项目外拒绝启动。生成结果包含手动入口与检查方法。在用户授权的 Bash 或 Zsh 配置中，用 `process-activate install --workspace PROFILE --name APP --shell bash --apply` 设置 PATH 和指向入口的交互式别名。别名使用绝对路径，入口丢失时会失败。验证会读取正常的新登录 shell 启动配置，若环境含启动钩子，应提前检查或换用临时 HOME 做演练。
+
+重连后核对 `type -a APP` 和 `alias APP`，确保别名指向生成的入口。入口丢失、被其他别名覆盖或启动路径变化时，先修复再运行。绝对路径、其他用户和非交互程序需要单独验收。还原时用相同参数执行 `process-activate restore`，再按交付说明处理本轮创建的工作区。移除工作区前先恢复 shell 配置。
 
 ## 持续服务与恢复
 

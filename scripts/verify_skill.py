@@ -13,7 +13,7 @@ from build_skill import build
 
 def verify():
     with tempfile.TemporaryDirectory(prefix="zhibi-skill-") as tmp:
-        base = Path(tmp)
+        base = Path(tmp).resolve()
         package = build(base / "artifacts")
         with zipfile.ZipFile(package["skill"]) as archive:
             assert all(name.startswith("zhibi/") and ".." not in Path(name).parts for name in archive.namelist())
@@ -38,6 +38,12 @@ def verify():
         exported_connection = run("connect", "--host", "example.com", "--export-out", base / "connection")
         assert Path(exported_connection["launcher"]).is_file()
         assert exported_connection["verified"] is False
+        if sys.platform in {"darwin", "linux"}:
+            service = run("connection-service", "--host", "example.com", "--name", "zhibi-verify",
+                          "--vps-egress", "--out", base / "browser-service")
+            assert service["installed"] is False
+            assert service["egress"] == "vps-existing-route"
+            assert Path(service["manager"]).is_file()
         assert (skill / "references/runtime.md").is_file()
         assert (skill / "references/local-vm.md").is_file()
         assert (skill / "references/audit.md").is_file()

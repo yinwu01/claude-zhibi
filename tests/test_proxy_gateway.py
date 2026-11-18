@@ -81,3 +81,64 @@ class GatewayTests(unittest.TestCase):
     def test_ipv6_literal_in_domain_cannot_bypass_policy(self):
         with self.assertRaises(OSError):
             connect_ipv4('::1', 443)
+
+    def test_authenticated_upstream_resolves_destination_itself(self):
+        case = self
+        address = b'\x03\x0fexample.invalid'
+
+        class Upstream(socketserver.BaseRequestHandler):
+            def handle(self):
+                client = self.request
+                client.settimeout(3)
+                case.assertEqual(exact(client, 3), b'\x05\x01\x02')
+                client.sendall(b'\x05\x02')
+                case.assertEqual(exact(client, 9), b'\x01\x03foo\x03bar')
+                client.sendall(b'\x01\x00')
+                request = b'\x05\x01\x00' + address + b'\x01\xbb'
+                case.assertEqual(exact(client, len(request)), request)
+                client.sendall(b'\x05\x00\x00\x03\x04edge\x00\x00')
+                case.assertEqual(exact(client, 4), b'ping')
+                client.sendall(b'pong')
+
+        with tempfile.TemporaryDirectory() as tmp, socketserver.TCPServer(('127.0.0.1', 0), Upstream) as upstream:
+            path = Path(tmp).resolve() / 'proxy.sock'
+            with Gateway(path, (*upstream.server_address, (b'foo', b'bar'))) as gateway:
+                servers = (upstream, gateway)
+                threads = [threading.Thread(target=server.serve_forever, daemon=True) for server in servers]
+                for thread in threads:
+                    thread.start()
+                try:
+                    with socket.socket(socket.AF_UNIX) as client:
+                        client.settimeout(3)
+                        client.connect(str(path))
+                        client.sendall(b'\x05\x01\x00')
+                        self.assertEqual(exact(client, 2), b'\x05\x00')
+                        client.sendall(b'\x05\x01\x00' + address + b'\x01\xbb')
+                        self.assertEqual(exact(client, 4), b'\x05\x00\x00\x01')
+                        exact(client, 6)
+                        client.sendall(b'ping')
+                        self.assertEqual(exact(client, 4), b'pong')
+                finally:
+                    for server in servers:
+                        server.shutdown()
+                    for thread in threads:
+                        thread.join(timeout=5)
+
+    def test_upstream_failure_cannot_fall_back_to_direct(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp).resolve() / 'proxy.sock'
+            with Gateway(path, ('127.0.0.1', 1080, None)) as gateway:
+                thread = threading.Thread(target=gateway.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    with patch('zhibi.proxy_gateway.open_upstream', side_effect=OSError('unavailable')), \
+                            patch('zhibi.proxy_gateway.connect_ipv4', side_effect=AssertionError('unexpected direct connection')):
+                        with socket.socket(socket.AF_UNIX) as client:
+                            client.settimeout(3)
+                            client.connect(str(path))
+                            client.sendall(b'\x05\x01\x00')
+                            self.assertEqual(exact(client, 2), b'\x05\xff')
+                            self.assertEqual(client.recv(1), b'')
+                finally:
+                    gateway.shutdown()
+                    thread.join(timeout=5)

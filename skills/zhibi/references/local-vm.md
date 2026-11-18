@@ -51,3 +51,14 @@ IPv6 默认关闭：只在这台 guest 写入 `/etc/sysctl.d/99-zhibi-disable-ip
 `vm audit --workspace VM_WORKSPACE --network` 逐项读 PVM 的 TCP/UDP/ICMP/DNS/IPv6、时区和语言结果，同时列出路由规则。warn/skipped/缺失项不算通过；WARP 无专用 probe agent 时可能有跳过。规则里的 direct/internal 例外仍然有效。
 
 继续按 [项目验收](audit.md) 验证应用实际出口、VM 浏览器、断开与恢复。重启后检查项目内容、应用配置和会话仍然存在。关闭桌面用同一 PVM_HOME 的 `pvm desktop NAME --stop`；停止 VM 用知彼 stop；解除项目绑定不会删除 VM。真正卸载前由用户明确选择是否保留虚拟磁盘、登录信息及应用会话。
+
+## 接入已有 VMware、Parallels 或 UTM Linux VM
+
+已有 VM 使用通用 SSH 接入。准备可通过 SSH 访问的 Linux guest，只挂载选定项目目录。VM 的创建、宿主共享和电源操作仍由其管理器处理。应用从 guest 内的隔离入口联网，整个 guest 的默认路由不由此改变。
+
+1. 在 VPS 用 [runtime](runtime.md) 的 `runtime-service --socket` 安装独立私人网关，按需配置上游。
+2. 在 guest 用 `connection-service --gateway-socket VPS_SOCKET` 导出和安装到该 VPS 网关的后台转发。把导出结果的 `proxy` 对象（SOCKS5 地址和端口）保存为 guest 内权限 600 的上游配置。
+3. 在 guest 用该文件启动临时私人网关，创建 `process-workspace --network proxy`。然后用 `runtime-service --workspace PROFILE --upstream-file FILE` 托管 guest 网关，按需创建和激活应用入口。本地浏览器直接转发到第一步的 VPS 网关。
+4. 在宿主用 `project bind --backend ssh-vm` 保存 guest SSH 目标及应用工作目录。启动脚本应调用 guest 内生成的绝对入口；另提供 `--probe-prefix-file` 指向隔离运行器。该绑定不另占浏览器代理端口。
+
+按 [audit](audit.md) 比较 guest 应用与本机浏览器出口，并验证断开 VPS 网关后两边的请求行为。按 [projects](projects.md) 导出编辑器配置或用项目启动入口。应用以外的 guest 进程仍需按实际需求单独配置和测量。
