@@ -18,6 +18,7 @@
 | Linux 启动前网关检查 | 用已关闭但仍有文件的 Unix socket 验证启动会被拒绝；已扩充 Linux bwrap 集成脚本，覆盖新登录 shell、项目内目录和合成宿主文件隔离。该脚本本轮未在 Linux 实机运行。 |
 | 仅浏览器的后台线路 | 用 macOS launchd 和仅监听回环的临时 OpenSSH 服务验证启动、SSH 进程退出后自动重连、撤销。 |
 | 共用网关与浏览器 | 临时 OpenSSH 转发到同机私人 Unix 网关。单独的真实 Chromium 配置能加载回环测试页；停网关后请求失败，恢复网关并重开同一配置后正常。测试仅覆盖指定页面及此配置。 |
+| Codex 新会话入门 | 在临时项目安装 Skill 后分别开启两个新会话。只用网页且无账号或 VPS 时，Agent 从账号准备开始。已有账号、想复用 VPS 跑 CLI 时，Agent 运行 `doctor --route remote`，说明各设备的日常入口。两次均未访问目标服务或 VPS。 |
 | 已登录业务和长期运行 | 本轮未启动 Claude、未访问 Claude 服务、未使用个人浏览器配置和实际项目数据，也未连接 227 或它的 VPS。真实 Linux 部署、所选指纹浏览器、账号业务和用户实际线路仍待验收。 |
 
 macOS 上可用 `PYTHONPATH=src python3 scripts/verify_native_connection.py` 重跑回环测试；设置 `CHROME_PATH` 后同时验证临时 Chromium 配置。脚本只使用临时密钥、临时服务和回环 HTTP 测试页。真实 Linux 实施前可在隔离环境运行 `PYTHONPATH=src python3 scripts/verify_process_workspace.py`。

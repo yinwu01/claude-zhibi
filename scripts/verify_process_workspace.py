@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real Linux bwrap/command-entry integration; no account or global changes."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import shlex
@@ -11,7 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from zhibi.sandbox import prepare, install_entry
-from zhibi import shell_entry
+from zhibi import connect, project, project_audit, remote, shell_entry
 
 
 def main():
@@ -55,6 +56,40 @@ def main():
                             'tz': 'America/Los_Angeles', 'private': None, 'cwd': '/workspace/nested',
                             'host_file': False,
                             'args': ['a b', '$(literal)'], 'child_home': '/home/app'}, data
+        # Run the same shell command and audit prefix that SSH receives in production.
+        start = root / 'start.sh'
+        start.write_text('demo-app "a b"')
+        start.chmod(0o600)
+        binding = SimpleNamespace(project=str(work), state_dir=str(root / 'state'), backend='remote',
+                                  host='example.org', user=None, port=None, identity=None, workdir=str(subdir),
+                                  local_port=10818, command_file=str(start), resume_file=None,
+                                  runtime_workspace=str(profile), no_browser_proxy=True, interactive=False,
+                                  action='start', apply=False)
+        project.bind(binding)
+        data, _ = project.load(binding)
+        assert str(profile / 'run.py') in data['runtime_prefix']
+        command = []
+        with patch.object(connect, 'run', side_effect=lambda options: command.extend(connect.argv(options)) or {}):
+            project.run(binding)
+        started = subprocess.run(['sh', '-c', command[-1]], env=env, capture_output=True, text=True, timeout=20)
+        assert started.returncode == 7, started.stderr
+
+        def execute(_target, command, timeout):
+            process = subprocess.run(['sh', '-c', command], env=env, capture_output=True, text=True, timeout=timeout)
+            return {'state': 'ok' if process.returncode == 0 else 'error', 'value': process.stdout}
+
+        probe = 'import json, os; print(json.dumps(dict(execution="ok", egress={}, cwd=os.getcwd(), home=os.environ["HOME"])))'
+        with patch.object(remote, 'execute', side_effect=execute), patch.object(project_audit, 'PROBE', probe):
+            measured = project_audit.measure(data)
+            expected_context = {key: json.loads(started.stdout)[key] for key in ('cwd', 'home')}
+            assert {key: measured[key] for key in expected_context} == expected_context
+            runner = profile / 'run.py'
+            original = runner.read_bytes()
+            runner.write_bytes(original + b'\n# changed after binding\n')
+            assert hashlib.sha256(runner.read_bytes()).hexdigest() not in data['runtime_prefix']
+            assert project_audit.measure(data)['execution'] == 'error'
+            assert subprocess.run(['sh', '-c', command[-1]], env=env, capture_output=True, timeout=20).returncode != 0
+            runner.write_bytes(original)
         # Simulate missing bwrap without modifying any system installation.
         env['PATH'] = str(profile / 'bin')
         failed = subprocess.run([entry['entry']], env=env, cwd=work, capture_output=True, timeout=20)
@@ -64,6 +99,7 @@ def main():
             shell_entry.run(activation)
         assert not (home / '.profile').exists() and not (home / '.bashrc').exists()
         print(json.dumps({'status': 'passed', 'application_replacement': True,
+                          'bound_start_and_probe_share_workspace': True, 'modified_runner_fails_closed': True,
                           'child_environment': True, 'literal_arguments': True,
                           'exit_status': True, 'missing_bwrap_fails_closed': True,
                           'fresh_login_shell': True, 'host_file_not_mounted': True}))

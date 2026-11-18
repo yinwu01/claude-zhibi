@@ -359,6 +359,18 @@ class FinalCoverageTests(unittest.TestCase):
         self.assertEqual(next(c for c in decision['overview']['checks'] if c['label']=='IP 信誉')['state'], 'attention')
 
 class SessionFallbackTests(unittest.TestCase):
+    def test_network_session_selects_only_network_checks(self):
+        from zhibi.session import probe_page
+        from zhibi.suite import plan
+        page = probe_page("network", True)
+        self.assertIn('for(const id of ["ipv4", "ipv6", "webrtc"])', page)
+        self.assertIn('for(const id of [])', probe_page("network", False))
+        page = probe_page("network", True, dns_observer="https://dns.example.org")
+        self.assertIn('for(const id of ["ipv4", "ipv6", "webrtc", "extra-dns"])', page)
+        self.assertIn('getElementById("dns-observer").value="https://dns.example.org"', page)
+        self.assertEqual(plan("network", network=True)["providers"], [])
+        self.assertEqual(plan("network", network=True, target="browser")["ip_scan"]["external_services"], [])
+
     def test_basic_session_selects_only_baseline_network_and_hides_catalog(self):
         from zhibi.session import probe_page
         page = probe_page("basic", True)

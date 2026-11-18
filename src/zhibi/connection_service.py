@@ -197,8 +197,8 @@ def install(root, config):
 def register(sub):
     p = sub.add_parser('connection-service', help='导出随登录启动、自动重连的浏览器私人连接服务')
     p.add_argument('--host', required=True)
-    p.add_argument('--user', default='root')
-    p.add_argument('--port', type=int, default=22)
+    p.add_argument('--user')
+    p.add_argument('--port', type=int)
     p.add_argument('--identity')
     p.add_argument('--ssh-config')
     p.add_argument('--local-port', type=int, default=10818)

@@ -1,11 +1,13 @@
 import os
 import shlex
+import shutil
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
-from zhibi import connect
+from zhibi import connect, editor, remote
 from zhibi.models import InputError
 
 
@@ -62,6 +64,62 @@ class ConnectTests(unittest.TestCase):
                 config.chmod(0o644)
                 with self.assertRaises(InputError):
                     connect.argv(options(ssh_config=str(config)))
+
+
+class SSHConfigurationTests(unittest.TestCase):
+    @staticmethod
+    def effective(argv):
+        # -G only prints OpenSSH's effective config; it never opens the fixture host.
+        done = subprocess.run([argv[0], "-G", *argv[1:]], capture_output=True, text=True, check=True)
+        return dict(line.split(" ", 1) for line in done.stdout.splitlines() if " " in line)
+
+    @unittest.skipUnless(shutil.which("ssh") and os.name == "posix", "requires OpenSSH")
+    def test_alias_config_and_explicit_overrides_match_in_every_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            config = folder / "ssh config"
+            config.write_text("Host work-alias\n  HostName 192.0.2.19\n  User alice\n  Port 2222\n"
+                              "  ProxyJump bastion\n  UserKnownHostsFile /tmp/private-known-hosts\n"
+                              "  StrictHostKeyChecking yes\nHost bastion\n  HostName 192.0.2.20\n")
+            config.chmod(0o600)
+            for username, port, want_user, want_port in ((None, None, "alice", "2222"),
+                                                        ("root", 22, "root", "22"),
+                                                        ("bob", None, "bob", "2222")):
+                with self.subTest(username=username, port=port):
+                    target = remote.target("work-alias", username, port, ssh_config=str(config))
+                    saved = remote.target(**target)
+                    binding = {"backend": "remote", "target": saved, "workdir": "/work"}
+                    exported = editor.export(folder / want_user, binding)
+                    commands = [remote.ssh_argv(saved, "true"),
+                                connect.argv(options(host="work-alias", user=username, port=port, ssh_config=str(config))),
+                                ["ssh", "-F", exported["ssh_config"], "work-alias"]]
+                    for argv in commands:
+                        values = self.effective(argv)
+                        self.assertEqual([values[k] for k in ("hostname", "port", "user", "proxyjump",
+                                                              "userknownhostsfile")],
+                                         ["192.0.2.19", want_port, want_user, "bastion",
+                                          "/tmp/private-known-hosts"])
+                        self.assertIn(values["stricthostkeychecking"], ("yes", "true"))
+                    jump = self.effective(["ssh", "-F", exported["ssh_config"], "bastion"])
+                    self.assertEqual(jump["hostname"], "192.0.2.20")
+            original = remote.target("work-alias")
+            self.assertEqual((original["user"], original["port"]), ("root", 22))
+            self.assertIn("StrictHostKeyChecking=yes", remote.ssh_argv(original, "true"))
+
+    def test_check_returns_specific_fixed_message_without_exposing_ssh_stderr(self):
+        failures = {"Permission denied (publickey).": "auth",
+                    "No ED25519 host key is known for example and you have requested strict checking.": "unknown_key",
+                    "REMOTE HOST IDENTIFICATION HAS CHANGED!": "changed_key",
+                    "Host key verification failed.": "host_key",
+                    "Connection refused": "refused", "Connection timed out": "timeout",
+                    "Could not resolve hostname": "host"}
+        for stderr, reason in failures.items():
+            with self.subTest(reason=reason), patch.object(remote, "ssh_argv", return_value=["ssh"]), \
+                    patch("subprocess.run", return_value=subprocess.CompletedProcess(
+                        ["ssh"], 255, "", stderr + " PRIVATE_DATA")):
+                with self.assertRaises(InputError) as caught:
+                    remote.check(remote.target("example.org"))
+                self.assertEqual(str(caught.exception), remote.SSH_ERRORS[reason])
 
 
 class RouteCheckTests(unittest.TestCase):

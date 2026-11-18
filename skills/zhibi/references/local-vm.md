@@ -1,6 +1,6 @@
 # 本地 Linux VM 路线（PVM）
 
-没有远程 Linux 运行服务器，或用户希望项目文件保留在本机时读取。首选远程路线保持不变。PVM 提供本机 Linux VM；地区网络出口是另一个配置项，不因创建 VM 自动获得。
+没有远程 Linux 服务器，或希望在本机编辑并保存项目时，可以用 PVM 建一台本地 Ubuntu 虚拟机。没有 VPS 也能创建，准备时明确选择 `--exit direct`，VM 会使用本机网络出站。需要专用远端出口时，单独配置用户自有的线路。
 
 ## 安装与预检
 
@@ -59,6 +59,6 @@ IPv6 默认关闭：只在这台 guest 写入 `/etc/sysctl.d/99-zhibi-disable-ip
 1. 在 VPS 用 [runtime](runtime.md) 的 `runtime-service --socket` 安装独立私人网关，按需配置上游。
 2. 在 guest 用 `connection-service --gateway-socket VPS_SOCKET` 导出和安装到该 VPS 网关的后台转发。把导出结果的 `proxy` 对象（SOCKS5 地址和端口）保存为 guest 内权限 600 的上游配置。
 3. 在 guest 用该文件启动临时私人网关，创建 `process-workspace --network proxy`。然后用 `runtime-service --workspace PROFILE --upstream-file FILE` 托管 guest 网关，按需创建和激活应用入口。本地浏览器直接转发到第一步的 VPS 网关。
-4. 在宿主用 `project bind --backend ssh-vm` 保存 guest SSH 目标及应用工作目录。启动脚本应调用 guest 内生成的绝对入口；另提供 `--probe-prefix-file` 指向隔离运行器。该绑定不另占浏览器代理端口。
+4. 在宿主用 `project bind --backend ssh-vm --runtime-workspace PROFILE` 保存 guest SSH 目标、进程工作区及应用工作目录。启动脚本使用沙箱内的应用命令，知彼让启动和探针走同一个运行器。该绑定不另占浏览器代理端口。
 
 按 [audit](audit.md) 比较 guest 应用与本机浏览器出口，并验证断开 VPS 网关后两边的请求行为。按 [projects](projects.md) 导出编辑器配置或用项目启动入口。应用以外的 guest 进程仍需按实际需求单独配置和测量。

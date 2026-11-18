@@ -51,18 +51,23 @@ def _check(pattern, value, message):
     return value
 
 
-def target(host, user="root", port=22, identity=None, ssh_config=None):
+def target(host, user=None, port=None, identity=None, ssh_config=None):
     """Connect parameters. Values are validated, never interpolated into a shell."""
+    # An explicit config owns omitted fields. Saved numeric ports and users
+    # remain overrides, including root/22 stored by older bindings.
+    if not ssh_config:
+        user = "root" if user is None else user
+        port = 22 if port is None else port
     item = {
         "host": _check(HOST, host, "服务器地址无效。"),
-        "user": _check(USER, user, "服务器用户名无效。"),
-        "port": int(port),
+        "user": _check(USER, user, "服务器用户名无效。") if user is not None else None,
+        "port": int(port) if port is not None else None,
         "identity": None,
     }
-    if not 1 <= item["port"] <= 65535:
+    if item["port"] is not None and not 1 <= item["port"] <= 65535:
         raise InputError("SSH 端口无效。")
     if identity:
-        path = os.path.expanduser(str(identity))
+        path = os.path.abspath(os.path.expanduser(str(identity)))
         if not os.path.isfile(path):
             raise InputError("身份文件不存在。")
         if os.name == "posix" and (os.stat(path).st_mode & 0o077):
@@ -78,24 +83,62 @@ def target(host, user="root", port=22, identity=None, ssh_config=None):
     return item
 
 
+def destination(item):
+    return item["user"] + "@" + item["host"] if item["user"] else item["host"]
+
+
 def ssh_argv(item, script):
     ssh = shutil.which("ssh")
     if not ssh:
         raise InputError("找不到 ssh 客户端。")
     argv = [ssh, "-F", item.get("ssh_config") or ("NUL" if os.name == "nt" else "/dev/null"),
-            "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new",
-            "-o", "ConnectTimeout=10", "-p", str(item["port"])]
+            "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
+            "-o", "ConnectTimeout=10"]
+    if item["port"] is not None:
+        argv += ["-p", str(item["port"])]
     if item["identity"]:
         argv += ["-i", item["identity"]]
-    return argv + ["--", item["user"] + "@" + item["host"], script]
+    return argv + ["--", destination(item), script]
+
+
+SSH_ERRORS = {
+    "changed_key": "服务器主机密钥已变更。先通过供应商控制台核对新指纹，确认变更原因后再更新本机信任记录。",
+    "unknown_key": "尚未信任服务器主机密钥。先在供应商控制台等独立渠道查指纹，再在自己的终端用同一主机、端口和 SSH 配置交互连接，核对一致后登记。",
+    "host_key": "SSH 主机密钥核验失败。请从可信渠道核对指纹，并检查本次 SSH 配置使用的 known_hosts 文件。",
+    "auth": "SSH 身份验证失败。请核对用户名和密钥；只有初始密码时，在自己的终端登录 VPS 配置公钥，再用相同设置验证免交互登录。",
+    "host": "SSH 无法解析主机名。请核对服务器地址；使用别名时传入包含该别名的私人 SSH 配置。",
+    "refused": "目标端口拒绝了 SSH 连接。请核对 VPS 的 SSH 端口和服务状态。",
+    "timeout": "SSH 操作超时。请核对 VPS 地址、端口、网络以及跳板的可达性。",
+}
+
+
+def ssh_error(stderr):
+    # Never include private SSH diagnostics or remote output in user messages.
+    text = stderr.lower()
+    for marker, reason in (("remote host identification has changed", "changed_key"),
+                           ("host key has changed", "changed_key"),
+                           ("host key is known for", "unknown_key"),
+                           ("host key verification failed", "host_key"),
+                           ("permission denied", "auth"),
+                           ("too many authentication failures", "auth"),
+                           ("could not resolve hostname", "host"),
+                           ("connection refused", "refused"),
+                           ("connection timed out", "timeout")):
+        if marker in text:
+            return reason
+    return None
 
 
 def execute(item, script, timeout=60):
     """Run one fixed script. No user input reaches the remote shell."""
     try:
         done = subprocess.run(ssh_argv(item, script), capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return {"state": "error", "value": "", "reason": "timeout"}
     except (OSError, subprocess.SubprocessError):
         return {"state": "error", "value": ""}
+    if done.returncode == 255:
+        return {"state": "error", "value": "", "reason": ssh_error(done.stderr)}
     if done.returncode != 0:
         return {"state": "error", "value": ""}
     return {"state": "ok", "value": done.stdout}
@@ -115,7 +158,7 @@ def check(item, egress=False):
     """Read remote facts. Egress is opt-in: it makes two outbound requests from the server."""
     outcome = execute(item, FACTS)
     if outcome["state"] != "ok":
-        raise InputError("无法读取远端状态；请确认地址、端口、凭据与首次指纹核对。")
+        raise InputError(SSH_ERRORS.get(outcome.get("reason"), "无法读取远端状态；请确认地址、端口、凭据与首次指纹核对。"))
     facts = parse_facts(outcome["value"])
     if egress:
         extra = execute(item, EGRESS, timeout=30)
@@ -276,7 +319,7 @@ def verify(facts, expect_tz=None, expect_locale=None, unit_name=None, unit_state
 
 
 def dispatch(args):
-    item = target(args.host, args.user, args.port, args.identity)
+    item = target(args.host, args.user, args.port, args.identity, getattr(args, "ssh_config", None))
     if args.action == "check":
         facts = check(item)
         result = {"remote": item["host"], "user": item["user"], "facts": facts,
@@ -319,9 +362,10 @@ def register(sub):
     p = sub.add_parser("remote", help="检查、对齐并包裹用户自己服务器上的长驻进程；默认只出计划")
     p.add_argument("action", choices=("check", "align", "wrap", "verify"))
     p.add_argument("--host", required=True, help="服务器地址")
-    p.add_argument("--user", default="root", help="SSH 用户")
-    p.add_argument("--port", type=int, default=22, help="SSH 端口")
+    p.add_argument("--user", help="SSH 用户；省略时使用指定配置，无配置时为 root")
+    p.add_argument("--port", type=int, help="SSH 端口；省略时使用指定配置，无配置时为 22")
     p.add_argument("--identity", help="私钥文件路径（权限需为 600）")
+    p.add_argument("--ssh-config", help="已有的私人 SSH 配置文件（权限 600）")
     p.add_argument("--timezone", help="目标时区，例如 Europe/Berlin")
     p.add_argument("--locale", help="目标 locale，例如 en_US.UTF-8")
     p.add_argument("--unit", help="systemd unit 名称")

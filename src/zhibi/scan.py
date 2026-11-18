@@ -31,7 +31,7 @@ LABELS = {"vpn": "VPN", "proxy": "代理", "tor": "Tor", "hosting": "托管网�
           "recent_abuse": "近期滥用", "active_vpn": "活跃 VPN", "active_tor": "活跃 Tor"}
 
 
-def scan_plan(network=False, providers=(), ipv6=False, target="agent"):
+def scan_plan(network=False, providers=(), ipv6=False, target="agent", measure_host=True):
     providers = list(dict.fromkeys(providers))
     if any(p not in PROVIDERS for p in providers):
         raise InputError("未知的情报来源。")
@@ -40,9 +40,9 @@ def scan_plan(network=False, providers=(), ipv6=False, target="agent"):
     if target not in ("agent", "browser"):
         raise InputError("检测对象应为 agent 或 browser。")
     endpoints = []
-    if network:
+    if network and measure_host:
         endpoints.append({"recipient": "api.ipify.org", "max_requests": 1, "fields": ["request_source_ip"]})
-    if ipv6:
+    if ipv6 and measure_host:
         endpoints.append({"recipient": "api6.ipify.org", "max_requests": 1, "fields": ["request_source_ip"]})
     for p in providers:
         fields = ["request_source_ip", "queried_ip", "query_profile"]
@@ -264,8 +264,9 @@ def validate_scan(report):
 
 
 def run_scan(network=False, providers=(), ipv6=False, browser_path=None, target="agent", out=None,
-             profile_path=None, client=None, transport=None, keys=None, sample=False, collector=None, progress=None):
-    plan = scan_plan(network, providers, ipv6, target)
+             profile_path=None, client=None, transport=None, keys=None, sample=False, collector=None, progress=None,
+             measure_host=True):
+    plan = scan_plan(network, providers, ipv6, target, measure_host)
     context = profile(read_json(profile_path) if profile_path else None)
     bundle = parse_bundle(read_json(browser_path)) if browser_path else None
     browser = bundle["observations"] if bundle else None
@@ -276,7 +277,7 @@ def run_scan(network=False, providers=(), ipv6=False, browser_path=None, target=
     directory = create_run(out)
     progress = progress or (lambda message: None)
     progress("正在读取本地信息并测量已选择的网络…")
-    transport = transport or Transport(network, ipv6=ipv6)
+    transport = transport or Transport(network and measure_host, ipv6=ipv6 and measure_host)
     items = (collector or collect)(transport, browser)
     baseline = evaluate(items, context, list(transport.flows), sample=sample)
     subjects = []

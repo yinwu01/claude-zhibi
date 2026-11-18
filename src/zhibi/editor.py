@@ -26,9 +26,6 @@ def export(out, binding):
     host = target["host"]
     config = [
         "Host " + host,
-        "    HostName " + host,
-        "    User " + target["user"],
-        "    Port " + str(target["port"]),
         "    StrictHostKeyChecking yes",
         "    ForwardAgent no",
         "    ForwardX11 no",
@@ -37,8 +34,12 @@ def export(out, binding):
         "    ControlMaster no",
         "    ControlPath none",
     ]
+    if target["user"] is not None:
+        config.append("    User " + target["user"])
+    if target["port"] is not None:
+        config.append("    Port " + str(target["port"]))
     if target["identity"]:
-        config += ["    IdentityFile " + ssh_path(target["identity"]), "    IdentitiesOnly yes"]
+        config.append("    IdentityFile " + ssh_path(target["identity"]))
     if target.get("ssh_config"):
         # Match the original hostname in the explicitly supplied config so
         # existing ProxyJump and known_hosts settings continue to work.
@@ -48,7 +49,7 @@ def export(out, binding):
         path = folder / "ssh_config"
         write(path, "\n".join(config) + "\n")
         write(folder / "editor-settings.private.json", {"remote.SSH.configFile": str(path)})
-        target_host = target["user"] + "@" + host
+        target_host = remote.destination(target)
         shell_command = "cd -- " + shlex.quote(project) + ' && case "${SHELL##*/}" in ' \
             'bash|zsh) exec "$SHELL" -il ;; *) printf "%s\\n" "Select Bash or Zsh on the remote host." >&2; exit 2 ;; esac'
         terminal = shlex.join(["ssh", "-F", str(path), "-o", "ClearAllForwardings=yes",

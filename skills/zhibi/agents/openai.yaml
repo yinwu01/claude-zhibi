@@ -1,4 +1,4 @@
 interface:
-  display_name: "知彼 · 检查与配置协助"
-  short_description: "主动检查实际网络环境，用 computer use 协助配置并复查"
-  default_prompt: "使用 $zhibi 检查我实际的网络环境，操作浏览器完成检测，协助处理已授权的问题，复查后打开报告。"
+  display_name: "知彼 · Claude 上手与配置"
+  short_description: "用 computer use 从当前步骤继续，协助账号开通、浏览器和 Linux 配置"
+  default_prompt: "使用 $zhibi 带我开始，了解我的目标和相关账号进度，需要配置专用网络时再问 VPS。"

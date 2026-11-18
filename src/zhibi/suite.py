@@ -50,9 +50,10 @@ def catalog():
 
 
 def selection(preset, modules):
-    if preset not in {"basic", "all", "custom"} or any(m not in MODULES for m in modules):
+    if preset not in {"basic", "network", "all", "custom"} or any(m not in MODULES for m in modules):
         raise InputError("未知检查组合或模块。")
-    return list(dict.fromkeys((list(MODULES) if preset == "all" else []) + list(modules)))
+    defaults = list(MODULES) if preset == "all" else ["browser-extras"] if preset == "network" else []
+    return list(dict.fromkeys(defaults + list(modules)))
 
 
 def selected_providers(preset, providers=None):
@@ -67,7 +68,8 @@ def plan(preset="basic", modules=(), network=False, target="agent", providers=No
     selected = selection(preset, modules)
     return {"preset": preset, "network_enabled": network, "modules": [m for m in catalog() if m["id"] in selected],
             "providers": selected_providers(preset, providers),
-            "ip_scan": scan_plan(network, selected_providers(preset, providers) if network else (), network, target),
+            "ip_scan": scan_plan(network, selected_providers(preset, providers) if network else (), network, target,
+                                 measure_host=(preset, target) != ("network", "browser")),
             "external_requests_without_network": 0, "environment_changes": False,
             "note": "all 包含全部可选只读检查；未配置项给操作提示，不伪造通过。SMTP/服务/TLS 是采集主机路径。"}
 
@@ -151,7 +153,8 @@ def run(preset="basic", modules=(), network=False, browser=None, target="agent",
     progress = progress or (lambda _: None)
     providers = selected_providers(preset, providers)
     base = run_scan(network=network, providers=providers if network else (), ipv6=network, browser_path=browser,
-                    target=target, out=directory / "base", progress=progress)
+                    target=target, out=directory / "base", progress=progress,
+                    measure_host=(preset, target) != ("network", "browser"))
     snapshot = read_json(directory / "base/snapshot.private.json")
     report = read_json(directory / "base/report.json")
     bundle = snapshot.get("browser") or {}
@@ -171,9 +174,13 @@ def run(preset="basic", modules=(), network=False, browser=None, target="agent",
         elif module == "cli":
             records[module] = d.cli_installation(os.environ.get("ZHIBI_CLIENT", "").strip() or None)
         elif module == "browser-extras":
-            from .browser_extras import LABELS
             extras = bundle.get("extras")
-            if not extras:
+            if preset == "network" and module not in modules:
+                item = (extras or {}).get("checks", {}).get("dns")
+                records["browser:dns"] = (dict(item, at=extras["at"], subject="selected_browser",
+                    recipients=[d.urllib.parse.urlsplit(item["facts"]["observer"]).hostname] if item["facts"] else [])
+                    if item else d.result("blocked_dependency", subject="selected_browser"))
+            elif not extras:
                 records[module] = d.result("blocked_dependency", subject="selected_browser")
             else:
                 for key, item in extras["checks"].items():
@@ -235,8 +242,10 @@ def run(preset="basic", modules=(), network=False, browser=None, target="agent",
     # Optional tools stay available without turning the baseline into a feature inventory.
     page = (directory / "base/report.html").read_text(encoding="utf-8")
     rows = []
-    from .browser_extras import LABELS
-    for key, r in records.items():
+    def priority(item):
+        return 0 if item[1]["status"] == "review" else 2 if item[1]["status"] == "ok" else 1
+
+    for key, r in sorted(records.items(), key=priority):
         rows.append([label(key), reading(key, r), advice(key, r["status"])])
     extra = ''.join('<tr><th scope="row">' + escape(label) + '</th><td>' + escape(value) + '</td><td>' + escape(action) + '</td></tr>' for label, value, action in rows)
     if rows:
@@ -244,7 +253,7 @@ def run(preset="basic", modules=(), network=False, browser=None, target="agent",
                   + '。这些是所选扩展的独立结果，不改变基础检查结论。</p>') if attention else ''
         detail = ('<details><summary>所选模块的本地依据</summary><pre>'
                   + escape(json.dumps(records, ensure_ascii=False, indent=2)) + '</pre></details>')
-        optional = ('<details id="optional-results"><summary>可选检查 · ' + str(len(rows)) + ' 项'
+        optional = ('<details id="optional-results"' + (' open' if attention else '') + '><summary>可选检查 · ' + str(len(rows)) + ' 项'
                     + (' · ' + str(len(attention)) + ' 项需核对' if attention else '')
                     + (' · ' + str(len(pending)) + ' 项无有效结果' if pending else '')
                     + '</summary><p class="muted">仅在选择后运行。终端侧结果不代替实际浏览器；未配置、未安装与执行失败不计入基础风险。</p>'
@@ -262,7 +271,7 @@ def run(preset="basic", modules=(), network=False, browser=None, target="agent",
 def register(sub):
     sub.add_parser("modules", help="列出全部可选模块、依赖、接收方和操作边界")
     p = sub.add_parser("suite", help="基础/全量/自定义只读检查，生成一张报告表")
-    p.add_argument("--preset", choices=("basic", "all", "custom"), default="basic")
+    p.add_argument("--preset", choices=("basic", "network", "all", "custom"), default="basic")
     p.add_argument("--module", choices=list(MODULES), action="append", default=[])
     p.add_argument("--network", action="store_true")
     p.add_argument("--provider", choices=list(PROVIDERS), action="append", default=[], help="自定义组合的可选数据源，可重复")

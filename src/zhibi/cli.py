@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import platform
+import shutil
 import sys
 from importlib.resources import files
 from pathlib import Path
@@ -24,6 +26,31 @@ from .scan import run_scan, scan_plan, scan_summary, render_scan, scan_markdown,
 
 def emit(data):
     print(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+def doctor(route):
+    system, arch = platform.system(), platform.machine().lower()
+    service_tools = {"Darwin": ("launchctl",), "Linux": ("systemctl", "systemd-analyze")}
+    required = ()
+    issues = []
+    if route in ("web", "remote"):
+        required = ("ssh", *service_tools.get(system, ()))
+        if system not in service_tools:
+            issues.append("浏览器后台连接支持 macOS 和使用 systemd 用户服务的 Linux。")
+    elif route == "pvm":
+        required = ("pvm",)
+        if (system, arch) not in {("Darwin", "arm64"), ("Linux", "x86_64")}:
+            issues.append("PVM 路线支持 macOS arm64 和 Linux amd64。")
+    available = {tool: bool(shutil.which(tool)) for tool in dict.fromkeys(("ssh", *required))}
+    missing = [tool for tool in required if not available[tool]]
+    python_supported = sys.version_info >= (3, 9)
+    if not python_supported:
+        issues.append("需要 Python 3.9 或更高版本。")
+    return {"version": __version__, "route": route, "ok": not (missing or issues),
+            "python_supported": python_supported, "system": system, "architecture": arch,
+            "local_tools": available, "missing_tools": missing, "issues": issues,
+            "account_login_required": False, "runtime_dependencies": [],
+            "notice": "仅检查本机平台和 PATH；SSH 认证、主机指纹、后台服务及实际出口需另行核验。"}
 
 
 def plan(network=False, metadata=False, ipv6=False, connectivity=False, target=None):
@@ -63,7 +90,7 @@ def save_run(report, snapshot, destination=None):
     emit({"directory": str(directory), "report": str(directory / "report.html"), "summary": summary})
 
 
-VISIBLE = {"process-activate", "connection-service", "vm", "project", "session", "scan", "check", "connect", "connection-check", "browser-workspace", "process-workspace", "process-entry", "proxy-gateway", "runtime-service", "build", "browse", "accept", "deliver", "doctor"}
+VISIBLE = {"process-activate", "connection-service", "vm", "project", "session", "scan", "check", "connect", "connection-check", "browser-workspace", "process-workspace", "process-entry", "proxy-gateway", "runtime-service", "build", "browse", "accept", "deliver", "doctor", "environment"}
 
 
 def _minimal_help(parser):
@@ -83,7 +110,8 @@ def main(argv=None):
     parser.add_argument("--version", action="version", version=__version__)
     sub = parser.add_subparsers(dest="command", required=True, metavar="command")
     sub.add_parser("capabilities", help="查看真实能力与实现边界")
-    sub.add_parser("doctor", help="检查工具运行条件，不读取账号文件")
+    p = sub.add_parser("doctor", help="检查选定路线的本机前置条件，不联网")
+    p.add_argument("--route", choices=("scan", "web", "remote", "pvm"), default="scan")
     sub.add_parser("providers", help="查看情报来源、覆盖与密钥配置状态，不显示密钥")
     p = sub.add_parser("dns", help="独立观察 dig 默认解析器，不代替浏览器 DNS 检测")
     p.add_argument("--network", action="store_true", help="允许一次固定 Akamai 诊断名称的 TXT 查询")
@@ -227,6 +255,8 @@ def main(argv=None):
     pvm_backend.register(sub)
     from . import flow
     flow.register(sub)
+    from . import environment
+    environment.register(sub)
     from . import delivery
     delivery.register(sub)
     p = sub.add_parser("dns-observer", help="Explicit self-hosted authoritative DNS observer; see tutorial")
@@ -274,6 +304,8 @@ def main(argv=None):
         elif args.command == "project":
             result = project.run(args)
             emit(result)
+            if args.action == "audit" and result.get("requires_attention"):
+                return 1
             return result.get("exit_status", 0)
         elif args.command == "connect":
             result = connect.run(args)
@@ -284,7 +316,15 @@ def main(argv=None):
             emit(result)
             return 0 if result.get("status") in (None, "ok") else 1
         elif args.command in flow.STEPS:
-            emit(flow.dispatch(args))
+            result = flow.dispatch(args)
+            emit(result)
+            if args.command == "build" and args.apply and not result["applied"]:
+                return 1
+            state = result.get("verification", {}).get("state")
+            if state == "fail" or (state == "not_measured" and (args.project or flow.has_browser(args))):
+                return 1
+        elif args.command == "environment":
+            emit(environment.dispatch(args))
         elif args.command == "remote":
             emit(remote.dispatch(args))
         elif args.command == "adspower":
@@ -295,7 +335,13 @@ def main(argv=None):
         elif args.command == "network-setup":
             emit(network_setup.deliver(args.config, args.out) if args.action == "client-config" else network_setup.ssh_tunnel(args.config, args.apply))
         elif args.command == "session":
-            emit(session.run(args.out, args.preset, args.network, args.config, args.wait, emit=lambda message: print(message, file=sys.stderr, flush=True), file_mode=args.file))
+            workflow = environment.workflow(args.environment) if args.environment else None
+            result = session.run(args.out, args.preset, args.network, args.config, args.wait,
+                                 emit=lambda message: print(message, file=sys.stderr, flush=True),
+                                 file_mode=args.file, dns_observer=args.dns_observer)
+            if workflow:
+                environment.record(workflow, "session", result)
+            emit(result)
         elif args.command == "workspace":
             emit(vault.dispatch(args))
         elif args.command == "maintain":
@@ -335,8 +381,9 @@ def main(argv=None):
                   "live_validation_required": ["keyed APIs with user credentials", "self-hosted DNS delegation",
                                                "licensed MMDB data", "Windows/Linux settings", "actual browser session"]})
         elif args.command == "doctor":
-            emit({"python_supported": sys.version_info >= (3, 9), "version": __version__,
-                  "account_login_required": False, "runtime_dependencies": []})
+            result = doctor(args.route)
+            emit(result)
+            return 0 if result["ok"] else 1
         elif args.command == "providers":
             emit({"providers": catalog(load_keys())})
         elif args.command == "dns":

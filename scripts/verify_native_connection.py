@@ -99,7 +99,9 @@ def verify(root):
     host_key = (root / "host.pub").read_text().split()[:2]
     (root / "known_hosts").write_text(f"[127.0.0.1]:{ssh_port} " + " ".join(host_key) + "\n")
     client_path = root / "ssh_config"
-    client_path.write_text(f"UserKnownHostsFile {root}/known_hosts\nStrictHostKeyChecking yes\n"
+    user = pwd.getpwuid(os.getuid()).pw_name
+    client_path.write_text(f"Host zhibi-loopback\nHostname 127.0.0.1\nUser {user}\nPort {ssh_port}\n"
+                           f"UserKnownHostsFile {root}/known_hosts\nStrictHostKeyChecking yes\n"
                            "IdentitiesOnly yes\nIdentityAgent none\n")
     client_path.chmod(0o600)
     server_path = root / "sshd_config"
@@ -121,8 +123,8 @@ def verify(root):
                 kind = "web" if web_only else "shared"
                 home = root / kind
                 home.mkdir()
-                args = SimpleNamespace(host="127.0.0.1", user=pwd.getpwuid(os.getuid()).pw_name,
-                    port=ssh_port, identity=str(root / "identity"), ssh_config=str(client_path),
+                args = SimpleNamespace(host="zhibi-loopback", user=None, port=None,
+                    identity=str(root / "identity"), ssh_config=str(client_path),
                     local_port=port(), gateway_socket=None if web_only else endpoint,
                     vps_egress=web_only, name=f"zhibi-test-{os.getpid()}-{kind}", out=str(home / "service"))
                 with patch("pathlib.Path.home", return_value=home):
@@ -167,7 +169,8 @@ def verify(root):
             stop(server)
             http.shutdown()
             thread.join()
-    print(json.dumps({"result": "passed", "web_only_restart": True, "shared_gateway_loss_and_recovery": True,
+    print(json.dumps({"result": "passed", "ssh_alias_and_pinned_host_key": True,
+                      "web_only_restart": True, "shared_gateway_loss_and_recovery": True,
                       "browser_reopen": bool(os.environ.get("CHROME_PATH")), "scope": "loopback fixture only"}))
 
 

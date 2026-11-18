@@ -4,20 +4,22 @@
 
 ## 远程路线
 
-先按 runtime 参考准备应用；绑定不代替依赖安装、隔离或出口验收。用户的启动脚本应调用已经准备好的进程入口。远端项目目录必须已存在。
+先按 runtime 参考准备应用与进程工作区。远端项目目录必须已存在，并位于该工作区共享给沙箱的项目中。启动脚本写沙箱内的应用命令，例如 `/opt/app/bin/myapp`；传给 `project bind` 后由同一工作区执行启动、恢复和探针。
 
 ```bash
 zhibi project bind --project LOCAL_PROJECT --host HOST --user USER --identity KEY \
-  --workdir REMOTE_PROJECT --command-file START_SCRIPT --resume-file RESUME_SCRIPT --interactive
+  --workdir REMOTE_PROJECT --command-file START_SCRIPT --interactive \
+  --no-browser-proxy --runtime-workspace REMOTE_PROCESS_WORKSPACE
 zhibi project status --project LOCAL_PROJECT
 zhibi project status --project LOCAL_PROJECT --live --network
 zhibi project start --project LOCAL_PROJECT --apply
-zhibi project resume --project LOCAL_PROJECT --apply
 ```
 
 省略 `--project` 使用当前目录。当前按精确目录绑定，不自动继承父目录绑定。`status` 默认只读保存的配置；`--live` 检查真实服务器，`--network` 额外测出口。`start/resume` 不带 `--apply` 只预览，执行时先检查远端项目目录。交互程序需要 PTY。
 
 恢复脚本是可选项，只在应用支持时填写，例如应用自身的 continue/resume 命令。不存在通用会话恢复协议。HOME/应用数据由已有进程工作区持久化，绑定只记住连接和命令。终端断开后需要继续运行的任务使用 runtime-service 等进程托管，不能承诺历史会话恢复会维持后台运行。
+
+以上示例适用于浏览器后台服务已单独配置的路线 B。用与本机 CLI 同版本的知彼生成远端工作区；绑定后启动和探针均校验 `run.py` 摘要，版本不符时会停止。旧版 `--probe-prefix-file` 可保留为自定义探针；其结果无法确认启动脚本真的经过同一运行器。见 [项目验收](audit.md)。已有 SSH 别名或跳板时，传同一个 `--ssh-config FILE`。绑定时如添加了 `--resume-file`，才使用 `project resume --apply`。
 
 浏览器已由后台服务维护时，绑定时传 `--no-browser-proxy`，以后启动和恢复只走 SSH 命令。未传时维持前台 SOCKS 行为，默认端口 10818。已有 VM 绑定自动走独立 SSH 命令模式。远程进程的实际出口仍需验收。
 

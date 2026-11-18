@@ -83,8 +83,9 @@ def render(report, snapshot=None):
     def table(headers, rows, label):
         return '<div class="table-wrap" role="region" tabindex="0" aria-label="' + e(label) + '"><table><thead><tr>' + ''.join(
             '<th scope="col">' + e(h) + '</th>' for h in headers) + '</tr></thead><tbody>' + ''.join(
-            '<tr>' + ''.join('<' + ('th scope="row"' if i == 0 else 'td') + '>' + e(v) + '</' + ('th' if i == 0 else 'td') + '>'
-                             for i, v in enumerate(row)) + '</tr>' for row in rows) + '</tbody></table></div>'
+            '<tr><th scope="row">' + e(row[0]) + '</th>'
+            + ''.join(f'<td data-label="{e(header)}">{e(value)}</td>' for header, value in zip(headers[1:], row[1:]))
+            + '</tr>' for row in rows) + '</tbody></table></div>'
 
     def detail(value):
         return "未返回" if value is None else str(value)
@@ -97,6 +98,27 @@ def render(report, snapshot=None):
                               "AS" + str(f["asn"]) if f["asn"] is not None else "未返回",
                               detail(f["organization"]), detail(f["network_type"])])
     identity_html = table(["检测对象", "来源", "国家代码", "ASN", "组织", "网络类型"], identity_rows, "网络归属实测值") if identity_rows else '<p class="empty">没有可用归属数据。</p>'
+    def reconciled(matching, field):
+        values = sorted({str(r["facts"][field]) for r in matching if r["facts"][field] is not None})
+        if field == "asn":
+            values = ["AS" + value for value in values]
+        return "未取得" if not values else " / ".join(values) + ("（来源有差异）" if len(values) > 1 else "")
+
+    profile_rows = []
+    for target in report["subjects"]:
+        matching = [r for r in valid if r["subject"] == target["id"]]
+        labels = []
+        for flag in ("proxy", "vpn", "tor", "hosting"):
+            observations_for_flag = {r["facts"]["flags"][flag] for r in matching if r["facts"]["flags"][flag] is not None}
+            if True in observations_for_flag:
+                labels.append(LABELS[flag] + ("（来源有差异）" if False in observations_for_flag else ""))
+        flag_reading = "、".join(labels) if labels else (
+            "已查询的标签未命中" if any(any(r["facts"]["flags"][flag] is not None for flag in ("proxy", "vpn", "tor", "hosting"))
+                                       for r in matching) else "未取得")
+        profile_rows.append([subject + " IPv" + str(target["family"]), reconciled(matching, "country_code"),
+                             reconciled(matching, "asn"), reconciled(matching, "network_type"), flag_reading])
+    profile_html = (table(["出口", "地区代码", "ASN", "线路类型", "代理与机房标签"], profile_rows, "IP 归属与标签")
+                    if profile_rows else '<p class="muted">取得出口地址后可查询地区、ASN 和线路类型。</p>')
     label_rows = []
     for key in ("vpn", "proxy", "tor", "hosting", "recent_abuse"):
         readings = []
@@ -157,6 +179,13 @@ def render(report, snapshot=None):
         elif snapshot is None:
             path_rows.append(["浏览器 IPv4", "未载入私人快照", state(p["status"]), p["at"], p["endpoint"]])
     path_html = table(["测量对象", "出口 / 观测值", "状态", "测量时间", "诊断端点"], path_rows, "浏览器和 Agent 的网络路径") if path_rows else '<p class="empty">没有载入路径观测；请同时选择对应私人快照。</p>'
+    route_values = {row[0]: row[1] + " · " + row[2] for row in path_rows if "WebRTC" not in row[0]}
+    route_matches = {p["id"][-1]: p.get("matches_agent") for p in report["paths"] if p["id"].startswith("path:browser-ipv")}
+    public_paths = table(["地址族", "实际浏览器", "Agent 进程", "对照"],
+        [[f"IPv{family}", route_values.get(f"浏览器 IPv{family}", "未测"),
+          route_values.get(f"Agent IPv{family}", "未测"),
+          {True: "一致", False: "不一致", None: "待确认"}[route_matches.get(family)]]
+         for family in ("4", "6")], "本次出口读数")
     context_rows = []
     o = observations.get("browser.context")
     if o and o["status"] == "ok":
@@ -190,9 +219,20 @@ def render(report, snapshot=None):
     contacted = sorted({f["recipient"] for f in report["data_flows"] if f["sent"]})
     references = ''.join('<li><a rel="noreferrer noopener" href="' + e(PROVIDERS[p]["docs"]) + '">' + e(PROVIDERS[p]["name"]) + '</a></li>' for p in dict.fromkeys(r["provider"] for r in records))
     css = files("zhibi").joinpath("assets").joinpath("scan-report.css").read_text(encoding="utf-8")
-    readings_html = '<div class="coverage">' + ''.join('<div><span>' + e(m["label"]) +
-        '</span><strong>' + e(m["value"]) + '</strong><span>' + e(m["meaning"]) + '</span></div>'
-        for m in decision["reputation_readings"]) + '</div>' if decision["reputation_readings"] else ''
+    def ranking(reading):
+        value, delimiter, _ = reading["value"].partition(" / ")
+        return (0, -float(value)) if delimiter else (1, 0)
+
+    readings = sorted(decision["reputation_readings"], key=ranking)
+    readings_html = (table(["来源", "分数 / 记录", "含义"], [[row["label"], row["value"], row["meaning"]]
+                           for row in readings], "IP 信誉来源") if readings else "")
+    ip_overview = ""
+    if snapshot is not None:
+        scores_intro = ("数值由高到低显示。每个指标按其来源的定义解释。" if readings_html
+                        else "本次没有取得信誉分或举报记录。")
+        ip_overview = (f'<section class="scan-panel"><h2>出口 IP</h2>{public_paths}</section>'
+                       f'<section class="scan-panel"><h2>IP 归属与信誉</h2>{profile_html}{readings_html}'
+                       f'<p class="muted">{scores_intro}<a href="#reputation">查看来源和完整读数</a></p></section>')
     enhancement_rows = []
     for item in decision["optional_enhancements"]:
         status_text = "未选择（可选）" if not item["observations"] else "；".join(
@@ -203,17 +243,18 @@ def render(report, snapshot=None):
     signup_links = ' · '.join('<a rel="noreferrer noopener" href="' + e(item["signup_url"]) + '">'
                               + e(item["name"]) + ' 免费注册</a>' for item in decision["optional_enhancements"])
     icons = {"measured": "✓", "attention": "!", "incomplete": "—"}
+    priority = {"attention": 0, "incomplete": 1, "measured": 2}
     checks_html = '<div class="results"><table aria-label="检测结果与建议"><colgroup><col class="check-col"><col class="result-col"><col></colgroup><thead><tr><th scope="col">检查项</th><th scope="col">结果</th><th scope="col">建议</th></tr></thead><tbody>' + ''.join(
         '<tr><th scope="row">' + e(item["label"]) + '</th><td><span class="result-badge" data-state="' + e(item["state"])
         + '"><span aria-hidden="true">' + icons[item["state"]] + '</span>' + e(item["result"])
-        + '</span></td><td>' + e(item["advice"]) + '</td></tr>' for item in overview["table_rows"]) + '</tbody></table></div>'
+        + '</span></td><td>' + e(item["advice"]) + '</td></tr>'
+        for item in sorted(overview["table_rows"], key=lambda item: priority[item["state"]])) + '</tbody></table></div>'
     counts_html = ''.join('<span data-state="' + key + '"><b>' + str(overview["counts"][key]) + '</b> 项' + label + '</span>'
-                          for key, label in (("measured", "已查通过"), ("attention", "待核对"), ("incomplete", "待补查")))
+                          for key, label in (("attention", "待核对"), ("incomplete", "待补查"), ("measured", "已查通过")))
     next_action = overview["next_action"]
-    next_html = ('<section class="next-action" aria-labelledby="next-title"><p class="section-kicker">接下来怎么做</p>'
+    next_html = ('<section class="next-action" aria-labelledby="next-title">'
                  '<h2 id="next-title">' + e(next_action["title"]) + '</h2><p>' + e(next_action["detail"]) + '</p>'
-                 '<p class="verify"><b>完成依据：</b>' + e(next_action["verify"]) + '</p>'
-                 '<p class="muted">这是基于检测的下一步建议；本次检测未修改环境设置。具备 computer use 能力的 Agent 可继续核对并执行已授权操作。</p></section>')
+                 '<p class="muted"><b>如何确认：</b>' + e(next_action["verify"]) + '</p></section>')
     confirmation = report.get("ipv6_confirmation")
     policy_evidence = ('<p>配置核对时间：' + e(confirmation["confirmed_at"]) + '；核对方式：'
                        + ('设置界面人工核对' if confirmation["method"] == "settings_ui" else '本地生效配置人工核对')
@@ -221,15 +262,16 @@ def render(report, snapshot=None):
     return f'''<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer"><title>知彼 · {e(subject)}环境检查</title><style>{css}</style></head>
-<body><main><header><a class="brand" href="#">知彼<span>ZHIBI</span></a><span class="edition">{'合成示例 · 非真实测量' if report['sample'] else '环境检查 · 本地报告'}</span></header>
-<div class="report-meta"><p>{e(subject)} · <strong>{e(headline)}</strong></p><p>检测于 {e(when)}</p></div>
-<div class="journey" aria-label="主流程"><span>01 选择环境</span><span class="current">02 主动检查</span><span>03 协助配置</span><span>04 复查交付</span></div>
-<section class="verdict" data-status="{e(overview['status'])}" aria-labelledby="status-title">
-<p class="section-kicker">本次结论</p><h1 id="status-title">{e(overview['headline'])}</h1>
+<body><main><header><div class="page-label"><span class="brand">知彼</span><h1>IP 检测</h1></div><span class="edition">{'合成示例 · 非真实测量' if report['sample'] else '本地报告'}</span></header>
+<div class="report-meta"><p>{e(subject)} · <strong>{e(headline)}</strong></p><p>{e(when)}</p></div>
+{ip_overview}
+<section class="result-line" data-status="{e(overview['status'])}" aria-labelledby="status-title">
+<p id="status-title">{e(overview['headline'])}</p>
 <div class="result-counts" aria-label="检查数量">{counts_html}</div></section>
 {next_html}
+<section class="scan-panel"><h2>检查结果与建议</h2>
 {checks_html}
-<p class="scope">{e(overview['scope'])}</p>
+<p class="scope">{e(overview['scope'])}</p></section>
 <!-- ZHIBI_OPTIONAL_RESULTS -->
 <details id="evidence"><summary>查看检测依据与技术详情</summary>
 <p class="muted">以下保留各项读数，供复核使用。页面更新不代表重新测量。</p>
@@ -241,7 +283,7 @@ def render(report, snapshot=None):
 <li>在该专用环境关闭 IPv6 出站，或在它的出口防火墙阻断 IPv6；仅“优先 IPv4”、隐藏 IPv6 DNS 记录或禁用 WebRTC 不等于完成此项。</li>
 <li>保存并重启该环境，核对生效配置，再用同一环境复测；保留设置截图或配置文件作为本地证据。</li></ol>
 <p>不要默认关闭整台日常电脑的 IPv6。若软件无法单独限制此环境，应先确定可隔离的出口方案。确需 IPv6 时，应验证其路由后采用单独方案；本默认方案不会将“已连通”判作“已关闭”。</p>{policy_evidence}</section>
-<section id="reputation"><h2>信誉读数与记录</h2>{readings_html}{label_html}{scores_html}<p class="muted">分数来自各家服务，越低表示该服务评估的风险越低；0 分不代表绝对安全。代理标签未命中也不代表实际没有使用代理。原始分数、网络比例和举报数各有含义，不转换成 账号处置概率；未查询或缺失的结果不会填成 0。</p></section>
+<section id="reputation"><h2>信誉来源与历史记录</h2>{label_html}{scores_html}<p class="muted">分数来自各家服务，越低表示该服务评估的风险越低；0 分不代表绝对安全。代理标签未命中也不代表实际没有使用代理。原始分数、网络比例和举报数各有含义，不转换成 账号处置概率；未查询或缺失的结果不会填成 0。</p></section>
 <section><h2>浏览器背景</h2>{context_html}<p class="muted">时区、语言以及 webdriver 自报值不被直接解释为欺诈或账号结果。</p></section>
 {details_html}
 <section><h2>来源覆盖与测量范围</h2>{gaps}

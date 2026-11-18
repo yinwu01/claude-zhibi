@@ -1,5 +1,6 @@
 """Ephemeral loopback probe receiver. No directory listing or private report serving."""
 import json
+import re
 import secrets
 import socket
 import time
@@ -11,22 +12,33 @@ from .models import InputError
 from .storage import create_run, write
 
 
-def probe_page(preset, network, download_name="zhibi-browser.json"):
-    selected = (["ipv4", "ipv6"] if network else []) + (["webrtc", "extra-tls"] if network and preset == "all" else [])
+def probe_page(preset, network, download_name="zhibi-browser.json", dns_observer=None):
+    selected = ["ipv4", "ipv6"] if network else []
+    if network and preset in ("network", "all"):
+        selected.append("webrtc")
+    if network and preset == "all":
+        selected.append("extra-tls")
     if preset == "all":
         selected += ["detail-" + k for k in ("locale", "identity", "runtime", "hardware", "fonts", "permissions")]
-        selected += ["extra-" + k for k in ("canvas", "webgl", "audio", "dns")]
-    defaults = '<script>for(const id of ' + json.dumps(selected) + '){document.getElementById(id).checked=true;}</script>'
+        selected += ["extra-" + k for k in ("canvas", "webgl", "audio")]
+    if dns_observer:
+        selected.append("extra-dns")
+    defaults = '<script>for(const id of ' + json.dumps(selected) + '){document.getElementById(id).checked=true;}'
+    if dns_observer:
+        defaults += 'document.getElementById("dns-observer").value=' + json.dumps(dns_observer).replace("<", "\\u003c") + ';'
+    defaults += '</script>'
     page = advanced_page().replace('</body>', defaults + '</body>')
     page = page.replace('a.download="zhibi-browser.json"', 'a.download=' + json.dumps(download_name))
     if selected:
         page = page.replace('默认不联网。只记录本页浏览器背景和能力。', '已按所选组合勾选检查；可以取消任何一项，点击开始后才执行。')
-    if preset == "basic":
+    if preset == "basic" and not dns_observer:
         page = page.replace('id="network-options" open', 'id="network-options"')
+    if dns_observer:
+        page = page.replace('<details><summary>扩展渲染与服务端观测', '<details open><summary>扩展渲染与服务端观测')
     return page
 
 
-def handler(directory, token, state, preset="basic", network=False):
+def handler(directory, token, state, preset="basic", network=False, dns_observer=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass
@@ -51,7 +63,7 @@ def handler(directory, token, state, preset="basic", network=False):
         def do_GET(self):
             if not self.valid_host() or self.path != "/" + token or state.get("received"):
                 return self.send(404, b'{}')
-            page = probe_page(preset, network).replace("connect-src https:", "connect-src 'self' https:", 1)
+            page = probe_page(preset, network, dns_observer=dns_observer).replace("connect-src https:", "connect-src 'self' https:", 1)
             page = page.replace('id="download" class="secondary"', 'id="download" hidden class="secondary"')
             script = '''<script>
 const localSave=document.createElement('button');localSave.textContent='保存到本机并生成报告';localSave.className='secondary';document.getElementById('download').after(localSave);
@@ -101,15 +113,17 @@ def file_received(directory, download=None):
     return True
 
 
-def run(out, preset="basic", network=False, config=None, wait=900, emit=print, file_mode=False):
+def run(out, preset="basic", network=False, config=None, wait=900, emit=print, file_mode=False, dns_observer=None):
     if not 30 <= wait <= 1800:
         raise InputError("等待时间范围为 30–1800 秒。")
+    if dns_observer and (not network or not re.fullmatch(r"https://(?:[A-Za-z0-9-]{1,63}\.)+[A-Za-z]{2,63}/?", dns_observer)):
+        raise InputError("浏览器 DNS 检测需要 --network 和自建 HTTPS 观测域名，不含路径或凭据。")
     directory = create_run(out)
     token, state = secrets.token_urlsafe(24), {}
     download_name = "zhibi-session-" + secrets.token_hex(16) + ".json"
     download = Path.home() / "Downloads" / download_name
-    write(directory / "probe.html", probe_page(preset, network, download_name))
-    server = None if file_mode else HTTPServer(("127.0.0.1", 0), handler(directory, token, state, preset, network))
+    write(directory / "probe.html", probe_page(preset, network, download_name, dns_observer))
+    server = None if file_mode else HTTPServer(("127.0.0.1", 0), handler(directory, token, state, preset, network, dns_observer))
     emit(json.dumps({"open_in_actual_browser": str(directory / "probe.html") if file_mode else "http://127.0.0.1:" + str(server.server_port) + "/" + token,
                     "file_fallback": str(directory / "probe.html"), "save_download_as": str(directory / "browser.private.json"),
                     "automatic_download_file": str(download),
@@ -138,8 +152,10 @@ def run(out, preset="basic", network=False, config=None, wait=900, emit=print, f
 def register(sub):
     p = sub.add_parser("session", help="在实际浏览器打开一次性本机探针；保存后自动生成报告")
     p.add_argument("--out")
-    p.add_argument("--preset", choices=("basic", "all"), default="basic")
+    p.add_argument("--preset", choices=("basic", "network", "all"), default="basic")
     p.add_argument("--network", action="store_true")
+    p.add_argument("--dns-observer", help="可选自建 HTTPS DNS 观测域名；所选浏览器点击开始后才请求")
+    p.add_argument("--environment", help="记录到 environment init 创建的私人过程目录")
     p.add_argument("--config")
     p.add_argument("--wait", type=int, default=900)
     p.add_argument("--file", action="store_true", help="代理环境无法访问回环地址时，用本地 HTML 并监听指定导出文件；不启动 HTTP 服务")

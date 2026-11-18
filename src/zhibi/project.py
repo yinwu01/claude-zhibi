@@ -8,6 +8,7 @@ import stat
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from importlib.resources import files
 
 from . import connect, remote
 from .models import InputError
@@ -52,6 +53,18 @@ def save(path, text):
         stream.write(text)
 
 
+def runtime_prefix(workspace, digest, workdir):
+    # Check the very bytes executed, and never fall back to the host on failure.
+    loader = ("import hashlib, sys; from pathlib import Path\n"
+              "runner, expected = sys.argv[1:3]\n"
+              "source = Path(runner).read_bytes()\n"
+              "if hashlib.sha256(source).hexdigest() != expected: raise SystemExit('Run.py version mismatch')\n"
+              "sys.argv = [runner] + sys.argv[3:]\n"
+              "exec(compile(source, runner, 'exec'), {'__name__': '__main__', '__file__': runner})")
+    return ["python3", "-I", "-c", loader, str(Path(workspace) / "run.py"), digest,
+            "--cwd", workdir, "--"]
+
+
 def bind(args):
     project, folder = location(args)
     if folder.exists() or folder.is_symlink():
@@ -83,7 +96,16 @@ def bind(args):
         probe_prefix = json.loads(private_read(Path(args.probe_prefix_file).expanduser()))
         if not isinstance(probe_prefix, list) or not probe_prefix or len(probe_prefix) > 32 or any(not isinstance(x, str) or not x or "\0" in x for x in probe_prefix):
             raise InputError("探针入口必须是非空 argv JSON 数组，不是 shell 字符串。")
-    if backend == "ssh-vm" and not probe_prefix:
+    runtime = getattr(args, "runtime_workspace", None)
+    if runtime:
+        if backend == "pvm" or probe_prefix:
+            raise InputError("知彼进程工作区用于 SSH 项目，不能与自定义探针入口同时使用。")
+        if not Path(runtime).is_absolute() or ".." in Path(runtime).parts or any(ord(c) < 32 for c in runtime):
+            raise InputError("进程工作区必须是 SSH 目标上的绝对目录。")
+        digest = hashlib.sha256(files("zhibi").joinpath("sandbox.py").read_text(encoding="utf-8").encode()).hexdigest()
+        extra["runtime_workspace"] = runtime
+        extra["runtime_prefix"] = runtime_prefix(runtime, digest, workdir)
+    if backend == "ssh-vm" and not (runtime or probe_prefix):
         raise InputError("已有 VM 须提供沙箱探针入口；仅测 guest 宿主网络不能证明应用出口。")
     data = {"version": 1, "backend": backend, "project": str(project), **extra,
             "target": item, "workdir": workdir, "local_port": args.local_port,
@@ -183,6 +205,7 @@ def run(args):
     options = SimpleNamespace(**data["target"], local_port=data["local_port"],
                               no_browser_proxy=data.get("no_browser_proxy", False),
                               command_file=str(folder / (name + ".sh")),
+                              runtime_prefix=data.get("runtime_prefix"),
                               workdir=data["workdir"], interactive=data["interactive"],
                               apply=args.apply, export_out=None)
     if args.apply:
@@ -206,14 +229,15 @@ def register(sub):
             child.add_argument("--backend", choices=("remote", "pvm", "ssh-vm"), default="remote")
             child.add_argument("--vm-workspace")
             child.add_argument("--host")
-            child.add_argument("--user", default="root")
-            child.add_argument("--port", type=int, default=22)
+            child.add_argument("--user")
+            child.add_argument("--port", type=int)
             child.add_argument("--identity")
             child.add_argument("--ssh-config", help="显式私人 SSH 配置；支持用户指定的跳板/代理")
             child.add_argument("--workdir")
             child.add_argument("--command-file", required=True)
             child.add_argument("--resume-file")
-            child.add_argument("--probe-prefix-file", help="私人 JSON argv 数组，指定应用探针运行入口，如 bwrap run.py --")
+            child.add_argument("--runtime-workspace", help="SSH 目标上知彼 process-workspace 的目录；启动、恢复和探针共用")
+            child.add_argument("--probe-prefix-file", help="旧版自定义探针前缀；不作为应用隔离的验收证据")
             child.add_argument("--local-port", type=int, default=10818)
             child.add_argument("--no-browser-proxy", action="store_true", help="浏览器使用独立后台连接")
             child.add_argument("--interactive", action="store_true")

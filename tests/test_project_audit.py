@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -5,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from zhibi import project_audit as audit
+from zhibi.models import InputError, now
 
 
 def observation(ip=None, execution="ok"):
@@ -32,6 +34,11 @@ class OutageTests(unittest.TestCase):
     def test_direct_fallback_or_unbroken_tunnel_fails(self):
         self.assertEqual(self.run_cycle(observation("203.0.113.2"))["state"], "fail")
 
+    def test_ipv6_reachability_during_an_ipv4_outage_fails(self):
+        during = observation()
+        during["egress_ipv6"] = {"state": "observed", "ip": "2001:db8::8"}
+        self.assertEqual(self.run_cycle(during)["reason"], "network_still_reachable_during_outage")
+
     def test_restoration_must_use_original_exit(self):
         self.assertEqual(self.run_cycle(observation(), observation("203.0.113.3"))["reason"], "exit_changed_after_restoration")
 
@@ -55,7 +62,25 @@ class OutageTests(unittest.TestCase):
         self.assertEqual(result["checks"]["egress"]["state"], "ok")
         self.assertEqual(result["checks"]["application_scope"]["state"], "not_measured")
         self.assertFalse(result["complete"])
+        with patch.object(audit, "measure", return_value=self.before):
+            legacy = audit.audit(args, {"backend": "remote", "probe_prefix": ["env"]})
+        self.assertEqual(legacy["checks"]["application_scope"]["state"], "not_measured")
 
     def test_offline_audit_never_connects(self):
         with patch.object(audit, "measure", side_effect=AssertionError("network")):
             self.assertFalse(audit.audit(SimpleNamespace(network=False), {})["attempted"])
+
+    def test_outage_import_rejects_other_bindings_and_old_results(self):
+        path = Path(self.tmp.name) / "audit.json"
+        binding = {"backend": "remote", "project": "/work/project"}
+        report = {"version": 1, "at": now(), "binding_sha256": audit.binding_fingerprint(binding),
+                  "checks": {"egress": {"ip": "203.0.113.1"}, "outage": {"state": "ok", "reason": "restored"}}}
+        path.write_text(json.dumps(report))
+        path.chmod(0o600)
+        self.assertEqual(audit.read_outage(path, binding)["baseline_ip"], "203.0.113.1")
+        with self.assertRaisesRegex(InputError, "不属于当前项目绑定"):
+            audit.read_outage(path, {**binding, "project": "/work/other"})
+        report["at"] = "2020-01-01T00:00:00Z"
+        path.write_text(json.dumps(report))
+        with self.assertRaisesRegex(InputError, "已过期"):
+            audit.read_outage(path, binding)
