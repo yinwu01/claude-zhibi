@@ -1,17 +1,16 @@
 # claude-zhibi · 知彼
 
-Zhibi is an Agent Skill that helps developers inspect and set up a dedicated environment for Claude. Use a separate browser profile for the web app and an isolated Linux workspace for Claude Code. The agent measures the actual network path for each environment.
+Zhibi is an Agent Skill for getting started with Claude, from signing up and checking your first subscription to opening the web app or coding in Linux. Tell the agent what you already have. It can pick up at that step.
 
-**Choose how you want to use Claude**
+**Why a dedicated browser and Linux?** Every additional client brings another device, set of permissions and network path into the same account’s history. Zhibi keeps daily use to two familiar environments: a separate profile in a mainstream browser and an isolated Linux workspace for Claude Code. Your everyday extensions, permissions and home directory stay in your personal setup. The agent checks the network path from each environment you actually use.
 
-- [Web only](#route-a-claude-on-the-web) · Set up a dedicated browser and open it directly for daily use.
-- [Web and Claude Code](#route-b-web-and-claude-code) · Reuse your Linux VPS where possible and open the configured project from your computer.
+- 📖 **[Register and subscribe via Google Play](docs/tutorials/claude-google-play.md)** · An illustrated guide in Chinese covering account setup, Android installation, payment, and checking that the plan appeared on the web.
+- 🌐 **[Use Claude on the web](#route-a-claude-on-the-web)** · Open a dedicated browser profile for everyday conversations.
+- 💻 **[Use the web and Claude Code](#route-b-web-and-claude-code)** · Run projects on a Linux server or create a local Ubuntu VM. Configure a shared network exit for your browser and workspace.
 
-[简体中文](README.md) · [Get started](#get-started) · [Implementation status](docs/implementation/two-route-plan.md)
+[Get started](#get-started) · [See a sample report](#what-you-receive) · [简体中文](README.md)
 
-IPv6 is disabled by default in managed PVM guests; the private proxy gateway permits IPv4 egress only. Host networking is unchanged.
-
-The `claude-zhibi` project uses the name `zhibi` for its CLI, Skill, and Python package.
+Claude Desktop, mobile apps and your everyday browser profile sit outside these two daily routes. Desktop and mobile apps have their own operating-system permissions and network settings. Android has a specific role in the Google Play guide: install the app, pay and check the subscription. Once the plan appears on the web, you can uninstall the app.
 
 ## Two runtime routes
 
@@ -27,6 +26,10 @@ Use a server you control for the VPS route. You can check an existing environmen
 
 ## What you receive
 
+![Sample handover report showing matching IPv4 addresses and differing IPv6 addresses for the browser and Linux workspace.](docs/assets/exit-check-example.png)
+
+The report uses sample data. Read each address family across the row. Here IPv4 matches, while IPv6 takes a different route. The report shows which check to repeat.
+
 - A dedicated application environment and a corresponding browser setup.
 - Private project bindings with start and optional application-specific resume commands.
 - Explicit uploads/downloads for the remote route, or a shared project for local VMs.
@@ -37,7 +40,11 @@ A smaller environment helps align the chosen timezone, language and network path
 
 ## Get started
 
-Use Python 3.9+, an SSH client and an Agent host such as Codex. Computer use is helpful for browser settings; supported APIs and manual steps can also be used.
+Paste this into a **Codex chat**:
+
+> Install Zhibi from https://github.com/yinwu01/claude-zhibi on my computer and show me how to get started.
+
+Alternatively, with Git, Python 3.9+ and Codex installed, run these commands in a terminal. The VPS route also uses an SSH client.
 
 ```bash
 git clone https://github.com/yinwu01/claude-zhibi.git
@@ -67,7 +74,7 @@ If you have no Linux server, use PVM to create a local VM or attach an existing 
 
 ## Daily use
 
-Open the dedicated browser profile for web use. The handover includes `open-browser.sh` for a generated Chromium workspace, or `open-vm-desktop.sh` for a profile inside PVM. For a bound CLI project, run `open-project.sh` in a terminal on your computer. You can also use the verified shell entry from the configured project directory on remote Linux. The browser connection attempts to reconnect automatically. Recheck the measured exit after changing lines or if access does not recover.
+Open the dedicated browser profile for web use. The handover includes `open-browser.sh` for a generated Chromium workspace, or `open-vm-desktop.sh` for a profile inside PVM. For a bound CLI project, run `open-project.sh` in a terminal on your computer. You can also use the verified shell entry from the configured project directory on remote Linux. The browser connection attempts to reconnect automatically. After changing networks, ask the agent to collect a fresh reading from your dedicated browser and pass it to `reproduce.sh` to compare with the handover record.
 
 For a bound SSH project, `zhibi project editor --out PRIVATE_DIRECTORY` exports a separate SSH profile, editor settings and a terminal launcher. Editor extensions and the real deployment need their own verification. [Editor setup](skills/zhibi/references/projects.md)
 

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="240" viewBox="0 0 720 240" role="img" aria-labelledby="title desc">
+  <title id="title">Google 手机号验证示意</title>
+  <desc id="desc">如果 Google 要求验证，在官方页面输入自己的手机号，再输入短信验证码。图中黑条为占位。</desc>
+  <rect x="1" y="1" width="718" height="238" rx="16" fill="#f8fafc" stroke="#cbd5e1"/>
+  <g font-family="system-ui, PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" fill="#17293e">
+    <text x="26" y="39" font-size="24" font-weight="700">如果 Google 提示验证手机号</text>
+    <text x="26" y="67" font-size="16" fill="#475569">只在当前的 Google 页面完成这两步</text>
+    <rect x="26" y="90" width="300" height="110" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <rect x="394" y="90" width="300" height="110" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="45" y="123" font-size="19" font-weight="700">1  确认区号和手机号</text>
+    <text x="413" y="123" font-size="19" font-weight="700">2  输入短信验证码</text>
+    <rect x="45" y="145" width="245" height="34" rx="6" fill="#edf2f7"/>
+    <rect x="413" y="145" width="245" height="34" rx="6" fill="#edf2f7"/>
+    <rect x="56" y="156" width="123" height="12" rx="3" fill="#263548"/>
+    <rect x="424" y="156" width="72" height="12" rx="3" fill="#263548"/>
+    <path d="M341 145h38m-8-8 8 8-8 8" fill="none" stroke="#526779" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="26" y="224" font-size="14" fill="#475569">步骤示意 · 黑条为示例占位</text>
+  </g>
+</svg>

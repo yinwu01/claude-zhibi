@@ -2,6 +2,8 @@
 
 用户需要注册、开通订阅、核对账号或排查付款时读取。先查明用户目前的状态，从第一个还没完成的步骤继续。已付费时先核对套餐与订单；已经付费并且套餐正常时直接转向配置或日常使用。
 
+用户想看页面示例时，打开[注册与订阅图文教程](https://github.com/yinwu01/claude-zhibi/blob/main/docs/tutorials/claude-google-play.md)，从开头的进度表选到当前一步。已扣款时先带用户核对 Play 订单和 Claude 网页套餐。
+
 使用官方页面。确认实际所在地符合 [Anthropic 支持地区政策](https://www.anthropic.com/legal/supported-regions)。设置 Google Play 地区时按 [Google Play 地区要求](https://support.google.com/googleplay/answer/7431675) 使用真实地区与付款资料。VPS 网络出口属于单独的环境配置。
 
 Agent 能看到或操作实际页面时，用 computer use 打开官方入口、指出当前步骤、核对账号及状态。界面有差别时，读当前屏幕和官方说明。手机画面不在 Agent 的可操作范围内时，给用户当前一步的操作，等用户回报结果后再接着走。密码、验证码、完整卡号、账单地址和身份材料由用户直接在官方页面处理；付款确认也交给用户。向用户确认结果时，用「邮箱是否一致」等最少信息。

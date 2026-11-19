@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="340" viewBox="0 0 720 340" role="img" aria-labelledby="title desc">
+  <title id="title">Google Play 付款和订阅到账的核对项</title>
+  <desc id="desc">付款前核对 Google 邮箱、付款方式、续费周期和首期总额。付款后用同一个邮箱核对 Google Play 订单和 Claude 网页套餐。</desc>
+  <rect x="1" y="1" width="718" height="338" rx="16" fill="#f8fafc" stroke="#cbd5e1"/>
+  <g font-family="system-ui, PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif" fill="#17293e">
+    <text x="26" y="42" font-size="24" font-weight="700">在 Google Play 付款前后各核对一次</text>
+    <rect x="26" y="65" width="322" height="228" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <rect x="372" y="65" width="322" height="228" rx="10" fill="#fff" stroke="#cbd5e1"/>
+    <text x="45" y="102" font-size="20" font-weight="700">付款前 · Google Play 结账</text>
+    <text x="391" y="102" font-size="20" font-weight="700">付款后 · 两处都要看到</text>
+    <path d="M45 117h284m62 0h284" stroke="#dbe3eb"/>
+    <g font-size="18">
+      <text x="45" y="151">付款邮箱</text>
+      <text x="45" y="187">卡片尾号</text>
+      <text x="45" y="223">套餐与续费周期</text>
+      <text x="45" y="259">首期总额与税额</text>
+      <text x="391" y="151" font-weight="700">Google Play</text>
+      <text x="391" y="181" fill="#475569">订单或订阅里出现 Claude</text>
+      <text x="391" y="230" font-weight="700">Claude 网页版</text>
+      <text x="391" y="260" fill="#475569">同一邮箱显示已开通的套餐</text>
+    </g>
+    <rect x="216" y="139" width="111" height="13" rx="3" fill="#263548"/>
+    <rect x="276" y="175" width="51" height="13" rx="3" fill="#263548"/>
+    <text x="26" y="321" font-size="14" fill="#475569">核对项示意 · 黑条为示例占位，金额和周期以实际结账页为准</text>
+  </g>
+</svg>
