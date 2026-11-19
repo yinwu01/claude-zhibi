@@ -22,7 +22,7 @@ Agent 可以打开官方入口、核对页面状态和提示下一步。它看�
 2. **[安装安卓 Claude App](#2-用指定的-google-账号安装-claude)。** 在电脑上的 Google Play 选择目标手机，或直接在手机的 Play 商店安装。
 3. **[登录并订阅](#3-在-claude-app-登录和开通订阅)。** 在 Claude App 用同一个 Google 账号登录，核对付款邮箱和金额后再订阅。
 4. **[确认到账](#核对订单与套餐)。** 核对 Google Play 收据和 Claude 网页端显示的套餐。
-5. **[卸载手机 App](#4-确认到账后卸载手机-app)，进入日常使用。** 选[路线 A · 独立浏览器](../../README.md#路径-a只用-claude-网页版)，或[路线 B · 独立浏览器加 Linux CLI](../../README.md#路径-b网页版与-claude-code)。
+5. **[卸载手机 App](#4-确认到账后卸载手机-app)，进入日常使用。** 选[路线 A · 独立浏览器](../../README.md#路线-a只用-claude-网页版)，或[路线 B · 独立浏览器加 Linux CLI](../../README.md#路线-b网页版--claude-code)。
 
 ## 贯穿全程的三个检查点
 
@@ -96,5 +96,5 @@ Agent 可以打开官方入口、核对页面状态和提示下一步。它看�
 
 ## 5. 进入知彼的两条日常路线
 
-- **路线 A，只用网页版。** 打开知彼配置好的独立浏览器环境，去 [Claude 网页版](https://claude.ai/)，选「使用 Google 登录」，用刚才开通订阅的账号。首次配置按 [网页版快速开始](../../README.md#路径-a只用-claude-网页版)。
-- **路线 B，网页版加 Claude Code。** 网页继续用同一个浏览器环境。需要写代码时，进入知彼配置的 Linux 工作区，优先用自有 VPS 或远程 Linux 服务器，也可以接入本地 Linux 虚拟机。Claude Code 授权时选订阅账号，用同一个 Google 账号完成浏览器登录。首次配置按 [网页版与 Claude Code 快速开始](../../README.md#路径-b网页版与-claude-code)。 [用 Claude 订阅登录 Claude Code](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-max-or-ultra-plan)
+- **路线 A，只用网页版。** 打开知彼配置好的独立浏览器环境，去 [Claude 网页版](https://claude.ai/)，选「使用 Google 登录」，用刚才开通订阅的账号。首次配置按 [网页版快速开始](../../README.md#路线-a只用-claude-网页版)。
+- **路线 B，网页版加 Claude Code。** 网页继续用同一个浏览器环境。需要写代码时，进入知彼配置的 Linux 工作区，优先用自有 VPS 或远程 Linux 服务器，也可以接入本地 Linux 虚拟机。Claude Code 授权时选订阅账号，用同一个 Google 账号完成浏览器登录。首次配置按 [网页版与 Claude Code 快速开始](../../README.md#路线-b网页版--claude-code)。 [用 Claude 订阅登录 Claude Code](https://support.claude.com/en/articles/11145838-use-claude-code-with-your-pro-max-or-ultra-plan)
