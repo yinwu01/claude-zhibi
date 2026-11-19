@@ -16,16 +16,13 @@
 
 Agent 可以打开官方入口、核对页面状态和提示下一步。它看不到手机画面时，你按当前一步操作并告诉它结果。密码、验证码和付款确认由你在官方页面处理。已有账号或订阅时，可以从核对登录或套餐的步骤开始。
 
-```mermaid
-flowchart TD
-    Account["选定同一个 Google 账号"] --> Install["在电脑或手机的 Google Play 安装"]
-    Install --> Login["在 Claude App 使用同一账号登录"]
-    Login --> Pay["核对付款邮箱和金额，再订阅"]
-    Pay --> Verify["核对 Play 收据与 Claude 网页套餐"]
-    Verify -.-> Uninstall["可选 · 卸载手机 App"]
-    Verify --> Web["路线 A · 独立浏览器"]
-    Verify --> Code["路线 B · 独立浏览器加 Linux CLI"]
-```
+### 开通流程一览
+
+1. **[选定同一个 Google 账号](#1-准备-google-账号手机和支付方式)。** 安装、登录和付款都用这个邮箱。
+2. **[安装安卓 Claude App](#2-用指定的-google-账号安装-claude)。** 在电脑上的 Google Play 选择目标手机，或直接在手机的 Play 商店安装。
+3. **[登录并订阅](#3-在-claude-app-登录和开通订阅)。** 在 Claude App 用同一个 Google 账号登录，核对付款邮箱和金额后再订阅。
+4. **[确认到账](#核对订单与套餐)。** 核对 Google Play 收据和 Claude 网页端显示的套餐。
+5. **[卸载手机 App](#4-确认到账后卸载手机-app)，进入日常使用。** 选[路线 A · 独立浏览器](../../README.md#路径-a只用-claude-网页版)，或[路线 B · 独立浏览器加 Linux CLI](../../README.md#路径-b网页版与-claude-code)。
 
 ## 贯穿全程的三个检查点
 
@@ -89,13 +86,13 @@ flowchart TD
 <details>
 <summary>美国区订单怎么看价格和税费？</summary>
 
-作者使用美国 Google Play 完成过订阅，当时填写的州为加州，所用 VPS 也在加州。要知道自己的订单实际收了多少，请在付款页分别看订阅小计、税额和总额，付款后用收据核对。网页和移动端的套餐价格可能有差异；税额按这笔交易适用的规则和实际付款资料计算。[Google Play 税费说明](https://support.google.com/googleplay/answer/2850368) · [Claude 套餐价格说明](https://support.claude.com/en/articles/11049741-what-is-the-max-plan)
+作者使用美国 Google Play 完成过订阅，当时填写的州为加州，所用 VPS 也在加州。要知道自己的订单实际收了多少，请在付款页分别看订阅小计、税额和总额，付款后用收据核对。网页和移动端的套餐价格可能有差异；税额按这笔交易适用的规则和实际付款资料计算。[Google Play 税费说明](https://support.google.com/googleplay/answer/2850368) · [Claude Max 定价](https://support.claude.com/en/articles/11049741-what-is-the-max-plan) · [Claude Ultra 定价](https://support.claude.com/en/articles/17728952-what-is-the-ultra-plan)
 
 </details>
 
 ## 4. 确认到账后卸载手机 App
 
-两边都确认成功后，可以卸载手机上的 Claude App。Google Play 上已经开通的订阅会按其条款自动续费，卸载不影响续费。以后仍用原来的 Google 账号到 [Google Play 订阅管理](https://play.google.com/store/account/subscriptions) 查看下一次扣款日期、换卡或取消续订。 [Google Play 取消或更改订阅](https://support.google.com/googleplay/answer/7018481) · [Claude Android 卸载说明](https://support.claude.com/en/articles/9612887-install-claude-for-android)
+两边都确认成功后，卸载手机上的 Claude App，再切换到配好的日常入口。Google Play 上已经开通的订阅会按其条款自动续费，卸载不影响续费。以后仍用原来的 Google 账号到 [Google Play 订阅管理](https://play.google.com/store/account/subscriptions) 查看下一次扣款日期、换卡或取消续订。 [Google Play 取消或更改订阅](https://support.google.com/googleplay/answer/7018481) · [Claude Android 卸载说明](https://support.claude.com/en/articles/9612887-install-claude-for-android)
 
 ## 5. 进入知彼的两条日常路线
 
